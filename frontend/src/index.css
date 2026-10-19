@@ -1,0 +1,215 @@
+@import "tailwindcss";
+
+@theme {
+  /* ─── Heirest Design Tokens ─────────────────────────────── */
+  --font-serif: "Cormorant Garamond", Georgia, serif;
+  --font-sans: "Plus Jakarta Sans", system-ui, sans-serif;
+  --font-mono: "JetBrains Mono", "Courier New", monospace;
+
+  /* Color palette */
+  --color-alabaster: #FAF9F6;
+  --color-ivory: #F3F1EC;
+  --color-espresso: #141413;
+  --color-stone: #6E6A63;
+  --color-champagne: #C5A880;
+  --color-champagne-light: #DDD0BB;
+  --color-champagne-dark: #A8895E;
+  --color-hairline: #E6E4DD;
+  --color-hairline-dark: #D0CEC8;
+
+  /* Animation timings */
+  --ease-luxury: cubic-bezier(0.25, 0.1, 0.25, 1);
+}
+
+/* ─── Base Styles ──────────────────────────────────────────── */
+*, *::before, *::after {
+  box-sizing: border-box;
+}
+
+html {
+  font-family: var(--font-sans);
+  background-color: var(--color-alabaster);
+  color: var(--color-espresso);
+  scroll-behavior: smooth;
+  -webkit-font-smoothing: antialiased;
+  -moz-osx-font-smoothing: grayscale;
+}
+
+body {
+  margin: 0;
+  padding: 0;
+  line-height: 1.6;
+}
+
+h1, h2, h3, h4, h5, h6 {
+  font-family: var(--font-serif);
+  font-weight: 300;
+  line-height: 1.15;
+  letter-spacing: -0.02em;
+  margin: 0;
+}
+
+/* ─── Utility Classes ──────────────────────────────────────── */
+.font-serif    { font-family: var(--font-serif); }
+.font-sans     { font-family: var(--font-sans); }
+.font-mono     { font-family: var(--font-mono); }
+
+.text-alabaster     { color: var(--color-alabaster); }
+.text-ivory         { color: var(--color-ivory); }
+.text-espresso      { color: var(--color-espresso); }
+.text-stone         { color: var(--color-stone); }
+.text-champagne     { color: var(--color-champagne); }
+
+.bg-alabaster       { background-color: var(--color-alabaster); }
+.bg-ivory           { background-color: var(--color-ivory); }
+.bg-espresso        { background-color: var(--color-espresso); }
+.bg-champagne       { background-color: var(--color-champagne); }
+
+.border-hairline    { border-color: var(--color-hairline); }
+
+/* ─── Scrollbar ────────────────────────────────────────────── */
+::-webkit-scrollbar         { width: 4px; }
+::-webkit-scrollbar-track   { background: var(--color-ivory); }
+::-webkit-scrollbar-thumb   { background: var(--color-champagne); border-radius: 2px; }
+
+/* ─── Focus ────────────────────────────────────────────────── */
+:focus-visible {
+  outline: 1.5px solid var(--color-champagne);
+  outline-offset: 2px;
+}
+
+/* ─── Selection ────────────────────────────────────────────── */
+::selection {
+  background-color: var(--color-champagne-light);
+  color: var(--color-espresso);
+}
+
+/* ─── Transitions ──────────────────────────────────────────── */
+.transition-luxury {
+  transition: all 0.35s var(--ease-luxury);
+}
+
+/* ─── Drawer overlay ───────────────────────────────────────── */
+.drawer-overlay {
+  position: fixed;
+  inset: 0;
+  background: rgba(20, 20, 19, 0.5);
+  backdrop-filter: blur(2px);
+  z-index: 40;
+}
+
+/* ─── SKU badge style ──────────────────────────────────────── */
+.sku-badge {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.08em;
+  text-transform: uppercase;
+  color: var(--color-stone);
+  padding: 2px 6px;
+  border: 1px solid var(--color-hairline);
+  background: var(--color-ivory);
+  display: inline-block;
+}
+
+/* ─── Hairline divider ─────────────────────────────────────── */
+.hairline {
+  border: none;
+  border-top: 1px solid var(--color-hairline);
+}
+
+/* ─── Section label ────────────────────────────────────────── */
+.section-label {
+  font-family: var(--font-mono);
+  font-size: 0.65rem;
+  letter-spacing: 0.15em;
+  text-transform: uppercase;
+  color: var(--color-stone);
+}
+
+/* ─── Animated gradient shimmer ────────────────────────────── */
+@keyframes shimmer {
+  0%   { background-position: -200% 0; }
+  100% { background-position: 200% 0; }
+}
+
+.shimmer {
+  background: linear-gradient(90deg,
+    var(--color-ivory) 25%,
+    var(--color-hairline) 50%,
+    var(--color-ivory) 75%
+  );
+  background-size: 200% 100%;
+  animation: shimmer 1.8s infinite;
+}
+
+/* ─── Floating label input ─────────────────────────────────── */
+.input-underline {
+  background: transparent;
+  border: none;
+  border-bottom: 1px solid var(--color-hairline);
+  border-radius: 0;
+  padding: 8px 0;
+  font-family: var(--font-sans);
+  font-size: 0.875rem;
+  color: var(--color-espresso);
+  width: 100%;
+  transition: border-color 0.2s;
+}
+
+.input-underline:focus {
+  outline: none;
+  border-bottom-color: var(--color-champagne);
+}
+
+/* ─── Press ticker ─────────────────────────────────────────── */
+@keyframes ticker-scroll {
+  0%   { transform: translateX(0); }
+  100% { transform: translateX(-50%); }
+}
+
+.ticker-track {
+  display: flex;
+  animation: ticker-scroll 30s linear infinite;
+  width: max-content;
+}
+
+.ticker-track:hover {
+  animation-play-state: paused;
+}
+
+/* ─── Sparkle animation for viewport ──────────────────────── */
+@keyframes sparkle-pulse {
+  0%, 100% { opacity: 0.3; transform: scale(0.8); }
+  50%       { opacity: 1;   transform: scale(1.2); }
+}
+
+.sparkle {
+  animation: sparkle-pulse 2.5s ease-in-out infinite;
+}
+
+/* ─── Page fade-in ─────────────────────────────────────────── */
+@keyframes fade-up {
+  from { opacity: 0; transform: translateY(24px); }
+  to   { opacity: 1; transform: translateY(0); }
+}
+
+.animate-fade-up {
+  animation: fade-up 0.6s var(--ease-luxury) both;
+}
+
+/* ─── Stage indicator dot ──────────────────────────────────── */
+@keyframes pulse-ring {
+  0%   { box-shadow: 0 0 0 0 rgba(197, 168, 128, 0.6); }
+  70%  { box-shadow: 0 0 0 8px rgba(197, 168, 128, 0); }
+  100% { box-shadow: 0 0 0 0 rgba(197, 168, 128, 0); }
+}
+
+.pulse-ring {
+  animation: pulse-ring 2s ease-out infinite;
+}
+
+/* ─── Search input placeholder ─────────────────────────────── */
+.search-input::placeholder {
+  color: var(--color-stone);
+  opacity: 0.7;
+}
