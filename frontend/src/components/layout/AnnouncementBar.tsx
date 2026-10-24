@@ -7,10 +7,11 @@ import type { Currency } from '../../types/jewelry';
 
 export default function AnnouncementBar() {
   const [visible, setVisible] = useState(true);
-  const { currency, setCurrency } = useJewelryStore();
+  const { currency, setCurrency, cmsSettings } = useJewelryStore();
   const [currencyOpen, setCurrencyOpen] = useState(false);
 
-  if (!visible) return null;
+  // Driven by admin CMS settings
+  if (!visible || !cmsSettings.announcementBarVisible) return null;
 
   const currentRate = CURRENCY_RATES.find((r) => r.code === currency)!;
 
@@ -33,12 +34,19 @@ export default function AnnouncementBar() {
           <Link to="/account?tab=designs" className="hover:opacity-100 transition-opacity">My Designs</Link>
         </div>
 
-        {/* Centre announcement */}
+        {/* Centre announcement — driven by admin CMS */}
         <div className="absolute left-1/2 -translate-x-1/2 text-center text-[0.65rem] tracking-[0.15em] uppercase">
           <Link to="/sizing-kit" className="hover:opacity-80 transition-opacity">
-            SHOP THE HEIREST SIZING KIT&nbsp;·&nbsp;ONLY $19&nbsp;
-            <span style={{ color: 'var(--color-champagne)' }}>+ FREE SHIPPING</span>
-            &nbsp;(REDEEMABLE CREDIT)
+            {cmsSettings.announcementBarText.split('+').length > 1 ? (
+              <>
+                {cmsSettings.announcementBarText.split('+')[0].trim()}&nbsp;
+                <span style={{ color: 'var(--color-champagne)' }}>
+                  + {cmsSettings.announcementBarText.split('+').slice(1).join('+').trim()}
+                </span>
+              </>
+            ) : (
+              <span>{cmsSettings.announcementBarText}</span>
+            )}
           </Link>
         </div>
 

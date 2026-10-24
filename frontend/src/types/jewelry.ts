@@ -233,3 +233,79 @@ export interface CurrencyRate {
   name: string;
   rateFromUSD: number;
 }
+
+// ---------------------------------------------------------------
+// Authentication Types
+// ---------------------------------------------------------------
+export type MembershipTier = 'Private Client' | 'Collector' | 'Founding Author';
+
+export interface User {
+  id: string;
+  firstName: string;
+  lastName: string;
+  email: string;
+  authorHandle: string;       // e.g. "@indiemoxley"
+  avatarUrl?: string;
+  membershipTier: MembershipTier;
+  role: 'customer' | 'admin'; // RBAC role
+  sizingKitVoucherCode?: string; // e.g. "HEIREST-KIT-19"
+  savedSizes?: FingerSizeEntry[];
+  createdAt: string; // ISO
+}
+
+// ---------------------------------------------------------------
+// Admin — CMS Settings
+// ---------------------------------------------------------------
+export interface CmsSettings {
+  announcementBarVisible: boolean;
+  announcementBarText: string;
+  sizingKitPrice: number;
+  heroHeadline: string;
+  heroSubheadline: string;
+  heroMediaUrl: string;
+}
+
+// ---------------------------------------------------------------
+// Admin — Product Input (for create / edit in CatalogManager)
+// ---------------------------------------------------------------
+export interface AdminProductInput {
+  name: string;
+  slug: string;
+  category: JewelryCategory;
+  style: JewelryStyle;
+  shortDescription: string;
+  baseCraftsmanshipFee: number;
+  metalWeightGrams: number;
+  availableMetals: MetalPurity[];
+  availableMetalColors: MetalColor[];
+  availableStones: StoneType[];
+  availableCuts: StoneCut[];
+  availableSettings: SettingStyle[];
+  availableCaratWeights: number[];
+  imagePlaceholderColor: string;
+  studioImageUrl?: string;
+  lifestyleImageUrl?: string;
+  isActive: boolean;
+  tags: string[];
+}
+
+export interface AuthResponse {
+  user: User;
+  token: string;
+  refreshToken?: string;
+}
+
+export interface LoginPayload {
+  email: string;
+  password?: string;
+  otpCode?: string;
+}
+
+export interface RegisterPayload {
+  firstName: string;
+  lastName: string;
+  email: string;
+  password: string;
+  authorHandle?: string;
+  newsletterOptIn?: boolean;
+}

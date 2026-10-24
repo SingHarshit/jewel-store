@@ -39,9 +39,9 @@ const STONE_COLORS_UI: Record<StoneType, string> = {
 
 
 
-// ─── Save design modal ────────────────────────────────────────
-function SaveDesignModal({ onSave, onClose }: { onSave: (handle: string) => void; onClose: () => void }) {
-  const [handle, setHandle] = useState('@');
+// ─── Auth-gate Save modal (shown to guests) ───────────────────
+function AuthGateSaveModal({ sku, onClose }: { sku: string; onClose: () => void }) {
+  const { openAuthModal } = useJewelryStore();
   return (
     <div className="fixed inset-0 z-50 flex items-center justify-center" style={{ backgroundColor: 'rgba(20,20,19,0.6)' }}>
       <motion.div
@@ -51,25 +51,30 @@ function SaveDesignModal({ onSave, onClose }: { onSave: (handle: string) => void
         style={{ backgroundColor: 'var(--color-alabaster)', border: '1px solid var(--color-hairline)' }}
       >
         <button onClick={onClose} className="absolute top-4 right-4 opacity-40 hover:opacity-100"><X size={18} /></button>
+        <p className="section-label mb-2" style={{ color: 'var(--color-champagne)' }}>Save Configuration</p>
         <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.8rem', fontWeight: 300, color: 'var(--color-espresso)' }}>
-          Save to My Designs
+          Sign in to Archive This Design
         </h3>
-        <p className="text-sm mt-2 mb-6" style={{ color: 'var(--color-stone)' }}>
-          Choose your author handle — your design will be saved and shareable with this identity.
+        <p className="text-sm mt-3 mb-2 leading-relaxed" style={{ color: 'var(--color-stone)' }}>
+          Sign in or create an account to save configuration
         </p>
-        <label className="section-label block mb-2">Your Author Handle</label>
-        <input
-          className="input-underline mb-6"
-          value={handle}
-          onChange={(e) => setHandle(e.target.value)}
-          placeholder="@yourhandle"
-        />
+        <div className="sku-badge mb-6">{sku}</div>
+        <p className="text-xs mb-6" style={{ color: 'var(--color-stone)' }}>
+          Your design will be automatically saved to your personal archive the moment you sign in.
+        </p>
         <button
-          onClick={() => onSave(handle)}
-          className="w-full py-3 text-[0.7rem] tracking-widest uppercase font-mono"
+          onClick={() => { onClose(); openAuthModal('login'); }}
+          className="w-full py-3 text-[0.7rem] tracking-widest uppercase font-mono mb-2"
           style={{ backgroundColor: 'var(--color-espresso)', color: 'var(--color-ivory)' }}
         >
-          Save Design
+          Sign In to Save
+        </button>
+        <button
+          onClick={() => { onClose(); openAuthModal('register'); }}
+          className="w-full py-2.5 text-[0.65rem] tracking-widest uppercase font-mono border transition-all hover:border-[var(--color-espresso)]"
+          style={{ borderColor: 'var(--color-hairline)', color: 'var(--color-espresso)' }}
+        >
+          Create Account
         </button>
       </motion.div>
     </div>
@@ -118,7 +123,7 @@ function SizingKitModal({ onClose, onAddToCart }: { onClose: () => void; onAddTo
 export default function ConfiguratorPage() {
   const { slug } = useParams<{ slug: string }>();
   const [searchParams] = useSearchParams();
-  const { currency, addToCart, saveDesign } = useJewelryStore();
+  const { currency, addToCart, saveDesign, isAuthenticated, authUser } = useJewelryStore();
 
   const product = slug ? getProductBySlug(slug) : MOCK_CATALOG[0];
 
@@ -134,7 +139,7 @@ export default function ConfiguratorPage() {
 
   const [config, setConfig] = useState<JewelryConfig>(initConfig);
   const [viewMode, setViewMode] = useState<ViewMode>('front');
-  const [showSaveModal, setShowSaveModal] = useState(false);
+  const [showSaveModal, setShowSaveModal] = useState(false);   // auth-gate modal for guests
   const [showSizingKit, setShowSizingKit] = useState(false);
   const [savedFeedback, setSavedFeedback] = useState(false);
   const [addedFeedback, setAddedFeedback] = useState(false);
@@ -167,11 +172,16 @@ export default function ConfiguratorPage() {
     setTimeout(() => setAddedFeedback(false), 2000);
   };
 
-  const handleSave = (handle: string) => {
-    saveDesign(product.id, product.name, config, handle);
-    setShowSaveModal(false);
-    setSavedFeedback(true);
-    setTimeout(() => setSavedFeedback(false), 2000);
+  const handleSaveClick = () => {
+    if (isAuthenticated && authUser) {
+      // Directly save, using authenticated handle
+      saveDesign(product.id, product.name, config, authUser.authorHandle);
+      setSavedFeedback(true);
+      setTimeout(() => setSavedFeedback(false), 2500);
+    } else {
+      // Show auth-gate modal — opens AuthDrawer after dismissal
+      setShowSaveModal(true);
+    }
   };
 
   return (
@@ -488,12 +498,13 @@ export default function ConfiguratorPage() {
 
           <div className="flex gap-3">
             <button
-              onClick={() => setShowSaveModal(true)}
+              onClick={handleSaveClick}
+              id="configurator-save-btn"
               className="flex items-center gap-2 px-4 py-3 border text-[0.65rem] tracking-widest uppercase font-mono transition-all hover:border-[var(--color-espresso)]"
               style={{ borderColor: 'var(--color-hairline)', color: 'var(--color-espresso)' }}
             >
               <Bookmark size={14} />
-              {savedFeedback ? 'Saved!' : 'Save Design'}
+              {savedFeedback ? 'Saved!' : (isAuthenticated ? 'Save Design' : 'Save to My Vault')}
             </button>
             <button
               onClick={handleAddToCart}
@@ -512,7 +523,7 @@ export default function ConfiguratorPage() {
 
       {/* Modals */}
       <AnimatePresence>
-        {showSaveModal && <SaveDesignModal onSave={handleSave} onClose={() => setShowSaveModal(false)} />}
+        {showSaveModal && <AuthGateSaveModal sku={sku} onClose={() => setShowSaveModal(false)} />}
         {showSizingKit && (
           <SizingKitModal
             onClose={() => setShowSizingKit(false)}

@@ -1,6 +1,6 @@
 import { useState } from 'react';
-import { Link, useSearchParams } from 'react-router-dom';
-import { Check, X, Download, Shield, RefreshCw, ChevronRight, Copy, ExternalLink, AlertCircle } from 'lucide-react';
+import { Link, useSearchParams, useNavigate } from 'react-router-dom';
+import { Check, X, Download, Shield, RefreshCw, ChevronRight, Copy, ExternalLink, AlertCircle, LogOut } from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useJewelryStore } from '../store/useJewelryStore';
 import { formatPrice } from '../utils/pricingEngine';
@@ -224,17 +224,50 @@ function CADApprovalBanner({ order }: { order: Order }) {
   );
 }
 
+// ─── Guest Banner ─────────────────────────────────────────────
+function AccountGuestBanner({ onOpen }: { onOpen: () => void }) {
+  return (
+    <div className="mb-6 p-4 border flex items-center justify-between" style={{ borderColor: 'var(--color-champagne)', backgroundColor: 'rgba(197,168,128,0.06)' }}>
+      <div>
+        <p className="text-sm font-mono" style={{ color: 'var(--color-espresso)' }}>Browsing as Guest</p>
+        <p className="text-xs mt-0.5" style={{ color: 'var(--color-stone)' }}>Sign in to access your Vault, live orders, and IGI certificates.</p>
+      </div>
+      <button onClick={onOpen} className="px-4 py-2 text-[0.62rem] tracking-widest uppercase font-mono" style={{ backgroundColor: 'var(--color-espresso)', color: 'var(--color-ivory)' }}>
+        Sign In
+      </button>
+    </div>
+  );
+}
+
 // ─── Main Account Page ────────────────────────────────────────
 export default function AccountPage() {
   const [searchParams, setSearchParams] = useSearchParams();
+  const navigate = useNavigate();
   const tabParam = (searchParams.get('tab') as AccountTab) ?? 'designs';
-  const { savedDesigns, vaultItems, orders, removeDesign, addToCart, currency, user, updateFingerSize } = useJewelryStore();
+  const {
+    savedDesigns, vaultItems, orders, removeDesign, addToCart, currency,
+    user, updateFingerSize,
+    authUser, isAuthenticated, openAuthModal, signOut,
+  } = useJewelryStore();
 
   const [certItem, setCertItem] = useState<VaultItem | null>(null);
   const [resizeItem, setResizeItem] = useState<VaultItem | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
 
   const setTab = (tab: AccountTab) => setSearchParams({ tab });
+
+  // Derive display values: prefer real auth user, fall back to legacy profile
+  const displayName = authUser
+    ? `${authUser.firstName} ${authUser.lastName}`
+    : user.name;
+  const displayHandle = authUser ? authUser.authorHandle : user.authorHandle;
+  const displayInitials = authUser
+    ? `${authUser.firstName[0]}${authUser.lastName[0]}`
+    : user.avatarInitials;
+  const displayTier    = authUser?.membershipTier;
+  const memberSince    = authUser
+    ? new Date(authUser.createdAt).toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })
+    : new Date(user.memberSince).toLocaleDateString('en-AU', { month: 'long', year: 'numeric' });
 
   const copyShareUrl = (design: typeof savedDesigns[0]) => {
     const url = generateShareUrl(design.sku, design.productId);
@@ -247,6 +280,8 @@ export default function AccountPage() {
 
   return (
     <div className="max-w-screen-xl mx-auto px-4 md:px-8 py-10 animate-fade-up">
+      {!isAuthenticated && <AccountGuestBanner onOpen={() => openAuthModal('login')} />}
+
       {/* Page header */}
       <div className="flex items-start justify-between mb-8">
         <div>
@@ -254,16 +289,30 @@ export default function AccountPage() {
             className="w-12 h-12 rounded-full flex items-center justify-center mb-4 text-base font-mono"
             style={{ backgroundColor: 'var(--color-espresso)', color: 'var(--color-ivory)' }}
           >
-            {user.avatarInitials}
+            {displayInitials}
           </div>
           <h1 style={{ fontFamily: 'var(--font-serif)', fontSize: '2.5rem', color: 'var(--color-espresso)', fontWeight: 300 }}>
-            {user.name}
+            {displayName}
           </h1>
-          <p className="section-label mt-1" style={{ color: 'var(--color-champagne)' }}>{user.authorHandle}</p>
-          <p className="section-label mt-0.5" style={{ color: 'var(--color-stone)' }}>
-            Member since {new Date(user.memberSince).toLocaleDateString('en-AU', { month: 'long', year: 'numeric' })}
+          <p className="section-label mt-1" style={{ color: 'var(--color-champagne)' }}>{displayHandle}</p>
+          {displayTier && (
+            <span className="inline-block mt-1 text-[0.58rem] tracking-widest uppercase font-mono px-2 py-0.5" style={{ backgroundColor: 'rgba(197,168,128,0.15)', color: 'var(--color-champagne)' }}>
+              {displayTier}
+            </span>
+          )}
+          <p className="section-label mt-1" style={{ color: 'var(--color-stone)' }}>
+            Member since {memberSince}
           </p>
         </div>
+        {isAuthenticated && (
+          <button
+            onClick={() => { signOut(); navigate('/'); }}
+            className="flex items-center gap-2 px-4 py-2 border text-[0.62rem] tracking-widest uppercase font-mono transition-all hover:border-[var(--color-espresso)]"
+            style={{ borderColor: 'var(--color-hairline)', color: 'var(--color-stone)' }}
+          >
+            <LogOut size={12} />Sign Out
+          </button>
+        )}
       </div>
 
       {/* Tabs */}
