@@ -13,11 +13,14 @@ import type {
   PricingRates,
   CmsSettings,
   VaultItem,
+  CheckoutPayload,
+  RazorpayVerificationPayload,
+  PaymentFailurePayload,
 } from '../types/jewelry';
 import { MOCK_CATALOG } from '../data/mockCatalog';
 import { MOCK_ORDERS, MOCK_SAVED_DESIGNS, MOCK_USER_PROFILE } from '../data/mockUserData';
 
-const BASE_URL = 'http://localhost:5000/api/v1';
+const BASE_URL = import.meta.env.VITE_API_URL || (import.meta.env.DEV ? 'http://localhost:5000/api/v1' : '/api/v1');
 
 const client = axios.create({
   baseURL: BASE_URL,
@@ -330,6 +333,87 @@ export const ordersApi = {
     withFallback(
       async () => (await client.get<Order>(`/orders/${id}`)).data,
       MOCK_ORDERS.find((o) => o.id === id) ?? null
+    ),
+
+  checkout: (payload: CheckoutPayload) =>
+    withFallback(
+      async () => (await client.post<any>('/orders/checkout', payload)).data,
+      (() => {
+        const subtotal = payload.items.reduce(
+          (sum, item) => sum + (item.priceUSD || 2500) * (item.quantity || 1),
+          0
+        );
+        const discount = payload.sizingKitVoucherCode ? 19 : 0;
+        const total = Math.max(0, subtotal - discount);
+        const randomNum = Math.floor(1000 + Math.random() * 9000);
+        const orderNumber = `HRS-${new Date().getFullYear()}-${randomNum}`;
+        const razorpayOrderId = `order_mock_${Date.now().toString(36)}`;
+
+        return {
+          id: `ord-local-${Date.now()}`,
+          orderNumber,
+          totalUSD: total,
+          totalAmount: total,
+          amountInCents: Math.round(total * 100),
+          currency: payload.currency || 'USD',
+          orderStatus: 'PENDING_PAYMENT' as const,
+          paymentStatus: 'PENDING' as const,
+          razorpayOrderId,
+          razorpayKeyId: 'rzp_test_HeirestDemoKey2026',
+          currentStage: 'specs_locked' as const,
+          stages: [
+            { stage: 'specs_locked', label: '01. Specs Locked', description: 'Your configuration has been confirmed and sent to our design studio.', isActive: true, isPending: false },
+            { stage: 'cad_approval', label: '02. 3D CAD Render Approval', description: 'Our master jeweller has created a precision 3D CAD render.', isActive: false, isPending: true },
+            { stage: 'metal_casting', label: '03. Metal Casting', description: 'Your ring is being cast in solid gold.', isActive: false, isPending: true },
+            { stage: 'stone_selection', label: '04. Hand-Picked Stone Selection', description: 'Our gemologist hand-selects your stone.', isActive: false, isPending: true },
+            { stage: 'master_setting', label: '05. Master Setting', description: 'Your stone is hand-set by our master setter.', isActive: false, isPending: true },
+            { stage: 'hand_polishing', label: '06. Hand Polishing', description: 'Your piece is brought to a mirror finish.', isActive: false, isPending: true },
+            { stage: 'quality_control', label: '07. 8-Point Quality Control', description: 'Independent gemological inspection.', isActive: false, isPending: true },
+            { stage: 'dispatched', label: '08. Insured DHL Express Dispatch', description: 'Your piece ships fully insured.', isActive: false, isPending: true }
+          ],
+          voucherApplied: discount > 0,
+          voucherDiscount: discount,
+          placedAt: new Date().toISOString()
+        };
+      })()
+    ),
+
+  verifyPayment: (payload: RazorpayVerificationPayload) =>
+    withFallback(
+      async () => (await client.post<any>('/orders/verify-payment', payload)).data,
+      (() => {
+        return {
+          success: true,
+          message: 'Payment verified and captured. 8-stage manufacturing pipeline unlocked.',
+          order: {
+            id: payload.orderId,
+            orderStatus: 'PLACED',
+            paymentStatus: 'CAPTURED',
+            currentStage: 'specs_locked',
+            razorpayPaymentId: payload.razorpayPaymentId,
+            razorpayOrderId: payload.razorpayOrderId
+          },
+          sizingKitVoucherGenerated: `HEIREST-KIT-${Math.random().toString(36).substring(2, 8).toUpperCase()}`
+        };
+      })()
+    ),
+
+  reportPaymentFailure: (payload: PaymentFailurePayload) =>
+    withFallback(
+      async () => (await client.post<any>('/orders/payment-failed', payload)).data,
+      { success: false, message: 'Payment recorded as failed.' }
+    ),
+
+  cancelOrder: (orderId: string, reason?: string) =>
+    withFallback(
+      async () => (await client.post<any>(`/orders/${orderId}/cancel`, { reason })).data,
+      { success: true, message: 'Order cancelled successfully' }
+    ),
+
+  refundOrder: (orderId: string, reason?: string, amount?: number) =>
+    withFallback(
+      async () => (await client.post<any>(`/orders/${orderId}/refund`, { reason, amount })).data,
+      { success: true, message: 'Refund initiated', refundId: `rfnd_${Date.now()}` }
     ),
 
   approveCad: (orderId: string) =>

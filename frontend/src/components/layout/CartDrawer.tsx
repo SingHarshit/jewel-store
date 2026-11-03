@@ -15,7 +15,7 @@ import {
 export default function CartDrawer() {
   const {
     isCartOpen, cartClose, cart, removeFromCart, updateCartItemQty,
-    clearCart, currency, addToCart,
+    clearCart, currency, addToCart, checkoutOpen,
   } = useJewelryStore();
 
   const subtotalUSD = cart.reduce((s, i) => s + i.priceUSD * i.quantity, 0);
@@ -248,6 +248,7 @@ export default function CartDrawer() {
                 </p>
 
                 <button
+                  onClick={() => checkoutOpen()}
                   className="w-full py-4 text-[0.75rem] tracking-[0.15em] uppercase font-mono transition-all hover:opacity-90 active:scale-[0.99]"
                   style={{ backgroundColor: 'var(--color-espresso)', color: 'var(--color-ivory)' }}
                 >

@@ -134,21 +134,95 @@ export interface DiamondGradingReport {
 }
 
 // ---------------------------------------------------------------
-// Order
+// Order & Payment Lifecycle
 // ---------------------------------------------------------------
+export type OrderStatus = 'PENDING_PAYMENT' | 'PLACED' | 'IN_PRODUCTION' | 'COMPLETED' | 'CANCELLED';
+export type PaymentStatus = 'PENDING' | 'AUTHORIZED' | 'CAPTURED' | 'FAILED' | 'REFUNDED';
+export type PaymentMethod = 'RAZORPAY' | 'BNPL_INSTALLMENTS';
+
+export interface PaymentTransaction {
+  id: string;
+  orderId: string;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  razorpaySignature?: string;
+  amount: number;
+  currency: string;
+  status: PaymentStatus;
+  method?: string;
+  errorCode?: string;
+  errorDescription?: string;
+  metadata?: any;
+  createdAt: string;
+  updatedAt: string;
+}
+
+export interface ShippingAddress {
+  fullName: string;
+  phone?: string;
+  street: string;
+  city: string;
+  state: string;
+  postalCode: string;
+  country: string;
+  name?: string;
+  line1?: string;
+  line2?: string;
+  postcode?: string;
+}
+
 export interface Order {
   id: string;
   orderNumber: string;
   items: CartItem[];
   totalUSD: number;
+  totalAmount?: number;
+  currency?: Currency | string;
   placedAt: string;
   estimatedCompletionDate: string;
   currentStage: OrderStage;
   stages: OrderStageRecord[];
-  shippingAddress: Address;
+  orderStatus?: OrderStatus;
+  paymentStatus?: PaymentStatus;
+  paymentMethod?: PaymentMethod;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  razorpaySignature?: string;
+  shippingAddress: Address | ShippingAddress;
+  orderNotes?: string;
+  cancellationReason?: string;
+  cancelledAt?: string;
+  refundId?: string;
   trackingNumber?: string;
   cadRenderApproved?: boolean;
   cadRenderUrl?: string;
+  transactions?: PaymentTransaction[];
+}
+
+export interface CheckoutPayload {
+  items: CartItem[];
+  shippingAddress: ShippingAddress | Address;
+  currency?: Currency | string;
+  sizingKitVoucherCode?: string;
+  orderNotes?: string;
+  paymentMethod?: PaymentMethod;
+}
+
+export interface RazorpayVerificationPayload {
+  orderId: string;
+  razorpayOrderId: string;
+  razorpayPaymentId: string;
+  razorpaySignature: string;
+  method?: string;
+}
+
+export interface PaymentFailurePayload {
+  orderId: string;
+  razorpayOrderId?: string;
+  razorpayPaymentId?: string;
+  errorCode?: string;
+  errorDescription?: string;
+  metadata?: any;
 }
 
 export interface OrderStageRecord {
@@ -249,6 +323,7 @@ export interface User {
   membershipTier: MembershipTier;
   role: 'customer' | 'admin'; // RBAC role
   sizingKitVoucherCode?: string; // e.g. "HEIREST-KIT-19"
+  sizingKitRedeemed?: boolean;
   savedSizes?: FingerSizeEntry[];
   createdAt: string; // ISO
 }

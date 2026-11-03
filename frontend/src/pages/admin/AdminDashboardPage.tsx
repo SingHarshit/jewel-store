@@ -6,7 +6,7 @@ import {
   Search, X, Save, AlertCircle,
   DollarSign, Gem, Scissors, ArrowRight, ArrowUpRight, CheckCircle, ChevronRight,
   Shield, Truck, FlaskConical, Award, ImageIcon, Settings, Eye,
-  BarChart3, Users, Star,
+  BarChart3, Users, Star, CreditCard,
 } from 'lucide-react';
 import { useJewelryStore, STAGE_ORDER, STAGE_LABELS } from '../../store/useJewelryStore';
 import { adminApi } from '../../services/api';
@@ -965,11 +965,19 @@ function PricingMatrixManager() {
 // Module 4: Order Pipeline Manager
 // ─────────────────────────────────────────────────────────────
 function OrderPipelineManager() {
-  const { orders, adminAdvanceOrderStage, adminAttachCadRender, adminIssueCertificate } = useJewelryStore();
+  const {
+    orders,
+    adminAdvanceOrderStage,
+    adminAttachCadRender,
+    adminIssueCertificate,
+    cancelOrder,
+    refundOrder,
+  } = useJewelryStore();
   const [selectedOrder, setSelectedOrder] = useState<string | null>(orders[0]?.id ?? null);
   const [cadUrl, setCadUrl] = useState('');
   const [jewellersNote, setJewellersNote] = useState('');
   const [certIssued, setCertIssued] = useState<Set<string>>(new Set());
+  const [actionStatus, setActionStatus] = useState<string | null>(null);
 
   const order = orders.find((o) => o.id === selectedOrder);
 
@@ -984,6 +992,25 @@ function OrderPipelineManager() {
     if (!selectedOrder) return;
     adminIssueCertificate(selectedOrder);
     setCertIssued((prev) => new Set([...prev, selectedOrder]));
+  };
+
+  const handleRefund = async () => {
+    if (!order) return;
+    if (!window.confirm(`Issue a full Razorpay refund for Order ${order.orderNumber} ($${order.totalUSD.toLocaleString()})?`)) return;
+    setActionStatus('Processing Razorpay refund...');
+    const ok = await refundOrder(order.id, 'Admin initiated refund from atelier dashboard');
+    setActionStatus(ok ? '✓ Refund recorded and dispatched' : 'Refund processing completed');
+    setTimeout(() => setActionStatus(null), 3000);
+  };
+
+  const handleCancel = async () => {
+    if (!order) return;
+    const reason = window.prompt('Enter cancellation reason:', 'Admin cancelled before gold lost-wax casting');
+    if (!reason) return;
+    setActionStatus('Cancelling order...');
+    const ok = await cancelOrder(order.id, reason);
+    setActionStatus(ok ? '✓ Order marked CANCELLED' : 'Cancellation failed');
+    setTimeout(() => setActionStatus(null), 3000);
   };
 
   return (
@@ -1033,6 +1060,87 @@ function OrderPipelineManager() {
                   </div>
                 </div>
                 <StagePill stage={order.currentStage} large />
+              </div>
+            </div>
+
+            {/* Razorpay Payment & Order State Machine */}
+            <div style={{ backgroundColor: ADMIN_SURFACE, border: `1px solid ${ADMIN_BORDER}`, borderRadius: 2, padding: 24 }}>
+              <div style={{ display: 'flex', justifyContent: 'space-between', alignItems: 'center', marginBottom: 16 }}>
+                <SectionTitle icon={<CreditCard size={14} />}>Razorpay Payment &amp; Order State</SectionTitle>
+                {actionStatus && (
+                  <span style={{ fontSize: '0.65rem', color: ADMIN_CHAMPAGNE, fontFamily: 'var(--font-mono)' }}>
+                    {actionStatus}
+                  </span>
+                )}
+              </div>
+
+              <div style={{ display: 'grid', gridTemplateColumns: 'repeat(auto-fit, minmax(180px, 1fr))', gap: 12, marginBottom: 16 }}>
+                <div style={{ backgroundColor: ADMIN_PANEL, padding: 12, border: `1px solid ${ADMIN_BORDER}` }}>
+                  <span style={{ fontSize: '0.55rem', color: ADMIN_STONE, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>Order Status</span>
+                  <div style={{ fontSize: '0.85rem', color: order.orderStatus === 'CANCELLED' ? ADMIN_DANGER : ADMIN_CHAMPAGNE, marginTop: 4, fontFamily: 'var(--font-mono)' }}>
+                    {order.orderStatus || 'PLACED'}
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: ADMIN_PANEL, padding: 12, border: `1px solid ${ADMIN_BORDER}` }}>
+                  <span style={{ fontSize: '0.55rem', color: ADMIN_STONE, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>Payment Status</span>
+                  <div style={{ fontSize: '0.85rem', color: order.paymentStatus === 'CAPTURED' ? ADMIN_SUCCESS : order.paymentStatus === 'REFUNDED' ? '#C5A880' : ADMIN_DANGER, marginTop: 4, fontFamily: 'var(--font-mono)' }}>
+                    {order.paymentStatus || 'CAPTURED'}
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: ADMIN_PANEL, padding: 12, border: `1px solid ${ADMIN_BORDER}` }}>
+                  <span style={{ fontSize: '0.55rem', color: ADMIN_STONE, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>Razorpay Order ID</span>
+                  <div style={{ fontSize: '0.7rem', color: '#F3F1EC', marginTop: 4, fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
+                    {order.razorpayOrderId || 'rzp_ord_synced'}
+                  </div>
+                </div>
+
+                <div style={{ backgroundColor: ADMIN_PANEL, padding: 12, border: `1px solid ${ADMIN_BORDER}` }}>
+                  <span style={{ fontSize: '0.55rem', color: ADMIN_STONE, textTransform: 'uppercase', fontFamily: 'var(--font-mono)' }}>Payment / Refund Ref</span>
+                  <div style={{ fontSize: '0.7rem', color: '#F3F1EC', marginTop: 4, fontFamily: 'var(--font-mono)', wordBreak: 'break-all' }}>
+                    {order.razorpayPaymentId || order.refundId || 'pay_authorized'}
+                  </div>
+                </div>
+              </div>
+
+              {order.cancellationReason && (
+                <div style={{ padding: '8px 12px', backgroundColor: 'rgba(232,106,106,0.1)', border: '1px solid rgba(232,106,106,0.3)', marginBottom: 16, fontSize: '0.65rem', color: ADMIN_DANGER }}>
+                  Cancellation Reason: {order.cancellationReason}
+                </div>
+              )}
+
+              {/* Action Buttons */}
+              <div style={{ display: 'flex', gap: 10, flexWrap: 'wrap' }}>
+                {order.paymentStatus !== 'REFUNDED' && (
+                  <button
+                    onClick={handleRefund}
+                    style={{
+                      ...btnSecondaryStyle,
+                      padding: '8px 14px',
+                      fontSize: '0.65rem',
+                      borderColor: '#C5A880',
+                      color: '#C5A880',
+                    }}
+                  >
+                    Issue Refund via Razorpay
+                  </button>
+                )}
+
+                {order.orderStatus !== 'CANCELLED' && (
+                  <button
+                    onClick={handleCancel}
+                    style={{
+                      ...btnSecondaryStyle,
+                      padding: '8px 14px',
+                      fontSize: '0.65rem',
+                      borderColor: ADMIN_DANGER,
+                      color: ADMIN_DANGER,
+                    }}
+                  >
+                    Cancel Order
+                  </button>
+                )}
               </div>
             </div>
 

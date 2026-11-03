@@ -1,0 +1,229 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum Role {
+  CUSTOMER
+  ADMIN
+}
+
+enum OrderStage {
+  SPECS_LOCKED
+  CAD_APPROVAL
+  METAL_CASTING
+  STONE_SELECTION
+  MASTER_SETTING
+  HAND_POLISHING
+  QUALITY_CONTROL
+  DISPATCHED
+}
+
+enum OrderStatus {
+  PENDING_PAYMENT
+  PLACED
+  IN_PRODUCTION
+  COMPLETED
+  CANCELLED
+}
+
+enum PaymentStatus {
+  PENDING
+  AUTHORIZED
+  CAPTURED
+  FAILED
+  REFUNDED
+}
+
+enum PaymentMethod {
+  RAZORPAY
+  BNPL_INSTALLMENTS
+}
+
+model User {
+  id                    String        @id @default(cuid())
+  email                 String        @unique
+  passwordHash          String?
+  firstName             String?
+  lastName              String?
+  authorHandle          String?       @unique
+  avatarUrl             String?
+  membershipTier        String        @default("Private Client")
+  role                  Role          @default(CUSTOMER)
+  sizingKitVoucherCode  String?
+  sizingKitRedeemed     Boolean       @default(false)
+  savedSizes            Json?         // FingerSizeEntry[]
+  preferredChainLengths Int[]         @default([])
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  designs               SavedDesign[]
+  orders                Order[]
+  vaultItems            VaultItem[]
+
+  @@map("users")
+}
+
+model BaseProduct {
+  id                    String        @id @default(cuid())
+  slug                  String        @unique
+  name                  String
+  category              String        // RG, PD, ER, BR, NK
+  style                 String        // 5S, SL, ET, SG, etc.
+  shortDescription      String
+  baseCraftsmanshipFee  Decimal       @db.Decimal(10, 2)
+  metalWeightGrams      Decimal       @db.Decimal(10, 3)
+  availableMetals       String[]
+  availableMetalColors  String[]
+  availableStones       String[]
+  availableCuts         String[]
+  availableSettings     String[]
+  availableCaratWeights Decimal[]
+  defaultConfig         Json
+  imagePlaceholderColor String        @default("#EAEAEA")
+  studioImageUrl        String?
+  lifestyleImageUrl     String?
+  tags                  String[]      @default([])
+  isNew                 Boolean       @default(false)
+  isBestseller          Boolean       @default(false)
+  isActive              Boolean       @default(true)
+  createdAt             DateTime      @default(now())
+  updatedAt             DateTime      @updatedAt
+
+  designs               SavedDesign[]
+
+  @@map("base_products")
+}
+
+model PricingMatrix {
+  id                    String        @id @default(cuid())
+  metalRates            Json          // Record<MetalPurity, number>
+  metalColorPremium     Json          // Record<MetalColor, number>
+  diamondRate           Decimal       @db.Decimal(10, 2)
+  stoneTypeRate         Json          // Record<StoneType, number>
+  cutPremiumMultiplier  Json          // Record<StoneCut, number>
+  fxRates               Json          // Record<Currency, number>
+  updatedAt             DateTime      @updatedAt
+
+  @@map("pricing_matrices")
+}
+
+model SavedDesign {
+  id           String      @id @default(cuid())
+  productId    String
+  productName  String
+  sku          String
+  config       Json
+  priceUSD     Decimal     @db.Decimal(10, 2)
+  authorHandle String
+  shareUrl     String?
+  notes        String?
+  isPublic     Boolean     @default(false)
+  userId       String
+  user         User        @relation(fields: [userId], references: [id], onDelete: Cascade)
+  product      BaseProduct @relation(fields: [productId], references: [id], onDelete: Cascade)
+  createdAt    DateTime    @default(now())
+  updatedAt    DateTime    @updatedAt
+
+  @@map("saved_designs")
+}
+
+model Order {
+  id                      String               @id @default(cuid())
+  orderNumber             String               @unique
+  userId                  String
+  items                   Json                 // CartItem[]
+  totalAmount             Decimal              @db.Decimal(12, 2)
+  currency                String               @default("USD")
+  orderStatus             OrderStatus          @default(PENDING_PAYMENT)
+  paymentStatus           PaymentStatus        @default(PENDING)
+  paymentMethod           PaymentMethod        @default(RAZORPAY)
+  razorpayOrderId         String?              @unique
+  razorpayPaymentId       String?
+  razorpaySignature       String?
+  shippingAddress         Json                 // Address (Full name, phone, street, city, state, postalCode, country)
+  orderNotes              String?
+  cancellationReason      String?
+  cancelledAt             DateTime?
+  refundId                String?
+  currentStage            OrderStage           @default(SPECS_LOCKED)
+  stages                  Json                 // OrderStageRecord[]
+  trackingNumber          String?
+  cadRenderApproved       Boolean              @default(false)
+  cadRenderUrl            String?
+  estimatedCompletionDate DateTime?
+  createdAt               DateTime             @default(now())
+  updatedAt               DateTime             @updatedAt
+
+  user                    User                 @relation(fields: [userId], references: [id], onDelete: Cascade)
+  vaultItems              VaultItem[]
+  transactions            PaymentTransaction[]
+
+  @@map("orders")
+}
+
+model PaymentTransaction {
+  id                String        @id @default(cuid())
+  orderId           String
+  razorpayOrderId   String?
+  razorpayPaymentId String?
+  razorpaySignature String?
+  amount            Decimal       @db.Decimal(12, 2)
+  currency          String        @default("USD")
+  status            PaymentStatus
+  method            String?
+  errorCode         String?
+  errorDescription  String?
+  metadata          Json?
+  createdAt         DateTime      @default(now())
+  updatedAt         DateTime      @updatedAt
+
+  order             Order         @relation(fields: [orderId], references: [id], onDelete: Cascade)
+
+  @@index([orderId])
+  @@index([razorpayPaymentId])
+  @@map("payment_transactions")
+}
+
+model VaultItem {
+  id                   String    @id @default(cuid())
+  certificateNumber    String    @unique
+  orderId              String?
+  userId               String
+  productId            String?
+  productName          String
+  sku                  String
+  config               Json
+  priceUSD             Decimal   @db.Decimal(10, 2)
+  insuranceValuation   Decimal   @db.Decimal(10, 2)
+  resizingUsed         Boolean   @default(false)
+  resizeRequested      Boolean   @default(false)
+  resizeRequestDetails Json?
+  stoneGradingReport   Json
+  inspectionDue        DateTime?
+  purchasedAt          DateTime  @default(now())
+  createdAt            DateTime  @default(now())
+  updatedAt            DateTime  @updatedAt
+
+  user                 User      @relation(fields: [userId], references: [id], onDelete: Cascade)
+  order                Order?    @relation(fields: [orderId], references: [id], onDelete: SetNull)
+
+  @@map("vault_items")
+}
+
+model StorefrontCms {
+  id                     String   @id @default(cuid())
+  announcementBarVisible Boolean  @default(true)
+  announcementBarText    String   @default("COMPLIMENTARY WORLDWIDE INSURED COURIER ON ALL BESPOKE COMMISSIONS")
+  sizingKitPrice         Decimal  @default(35.00) @db.Decimal(8, 2)
+  heroHeadline           String   @default("Sculpted by You, Perfected by Masters")
+  heroSubheadline        String   @default("Parametric fine jewelry crafted in solid gold and lab-grown stones")
+  heroMediaUrl           String   @default("https://images.unsplash.com/photo-1605100804763-247f67b3557e?auto=format&fit=crop&q=80&w=1200")
+  updatedAt              DateTime @updatedAt
+
+  @@map("storefront_cms")
+}

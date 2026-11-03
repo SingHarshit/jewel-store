@@ -25,7 +25,7 @@ import {
   MOCK_USER_PROFILE,
 } from '../data/mockUserData';
 import { MOCK_CATALOG, COMMUNITY_DESIGNS } from '../data/mockCatalog';
-import { authApi } from '../services/api';
+import { authApi, ordersApi } from '../services/api';
 
 export type AuthModalView = 'login' | 'register' | 'forgot-password' | 'magic-otp';
 
@@ -101,6 +101,15 @@ interface JewelryStore {
   // ── Orders ────────────────────────────────────────────────────
   orders: Order[];
   approveCadRender: (orderId: string) => void;
+  isCheckoutOpen: boolean;
+  checkoutOpen: () => void;
+  checkoutClose: () => void;
+  appliedVoucherCode: string | null;
+  setAppliedVoucherCode: (code: string | null) => void;
+  onPaymentSuccess: (orderData: any, voucherGenerated?: string | null) => void;
+  cancelOrder: (orderId: string, reason?: string) => Promise<boolean>;
+  refundOrder: (orderId: string, reason?: string) => Promise<boolean>;
+  fetchOrders: () => Promise<void>;
 
   // ── Legacy user profile (sizing / chain prefs) ────────────────
   user: UserProfile;
@@ -314,8 +323,119 @@ export const useJewelryStore = create<JewelryStore>()(
       // ── Vault ──────────────────────────────────────────────────
       vaultItems: MOCK_VAULT_ITEMS,
 
-      // ── Orders ─────────────────────────────────────────────────
+      // ── Orders & Checkout ──────────────────────────────────────
       orders: MOCK_ORDERS,
+      isCheckoutOpen: false,
+      checkoutOpen: () => set({ isCheckoutOpen: true, isCartOpen: false }),
+      checkoutClose: () => set({ isCheckoutOpen: false }),
+      appliedVoucherCode: null,
+      setAppliedVoucherCode: (code) => set({ appliedVoucherCode: code }),
+
+      onPaymentSuccess: (orderData, voucherGenerated) => {
+        const { orders, user, authUser, appliedVoucherCode } = get();
+        const existingIdx = orders.findIndex(
+          (o) => o.id === orderData.id || o.orderNumber === orderData.orderNumber
+        );
+
+        let updatedOrders = [...orders];
+        if (existingIdx >= 0) {
+          updatedOrders[existingIdx] = {
+            ...updatedOrders[existingIdx],
+            ...orderData,
+            orderStatus: 'PLACED',
+            paymentStatus: 'CAPTURED',
+            currentStage: 'specs_locked',
+          };
+        } else {
+          updatedOrders = [orderData, ...orders];
+        }
+
+        const nextUser = {
+          ...user,
+          ...(voucherGenerated
+            ? { sizingKitVoucherCode: voucherGenerated, sizingKitRedeemed: false }
+            : {}),
+          ...(appliedVoucherCode ? { sizingKitRedeemed: true } : {}),
+        };
+
+        const nextAuthUser = authUser
+          ? {
+              ...authUser,
+              ...(voucherGenerated
+                ? { sizingKitVoucherCode: voucherGenerated, sizingKitRedeemed: false }
+                : {}),
+              ...(appliedVoucherCode ? { sizingKitRedeemed: true } : {}),
+            }
+          : null;
+
+        set({
+          orders: updatedOrders,
+          cart: [],
+          isCartOpen: false,
+          isCheckoutOpen: false,
+          appliedVoucherCode: null,
+          user: nextUser,
+          authUser: nextAuthUser,
+        });
+
+        if (nextAuthUser) {
+          localStorage.setItem('heirest-auth-user', JSON.stringify(nextAuthUser));
+        }
+      },
+
+      cancelOrder: async (orderId, reason) => {
+        try {
+          await ordersApi.cancelOrder(orderId, reason);
+          set((state) => ({
+            orders: state.orders.map((o) =>
+              o.id === orderId || o.orderNumber === orderId
+                ? {
+                    ...o,
+                    orderStatus: 'CANCELLED',
+                    cancellationReason: reason || 'Customer requested order cancellation',
+                    cancelledAt: new Date().toISOString(),
+                  }
+                : o
+            ),
+          }));
+          return true;
+        } catch {
+          return false;
+        }
+      },
+
+      refundOrder: async (orderId, reason) => {
+        try {
+          const res = await ordersApi.refundOrder(orderId, reason);
+          set((state) => ({
+            orders: state.orders.map((o) =>
+              o.id === orderId || o.orderNumber === orderId
+                ? {
+                    ...o,
+                    paymentStatus: 'REFUNDED',
+                    orderStatus: 'CANCELLED',
+                    refundId: res.refundId || `rfnd_${Date.now()}`,
+                    cancellationReason: reason || 'Refund issued',
+                  }
+                : o
+            ),
+          }));
+          return true;
+        } catch {
+          return false;
+        }
+      },
+
+      fetchOrders: async () => {
+        try {
+          const remoteOrders = await ordersApi.getAll();
+          if (remoteOrders && remoteOrders.length > 0) {
+            set({ orders: remoteOrders });
+          }
+        } catch (err) {
+          console.warn('Could not sync remote orders:', err);
+        }
+      },
 
       approveCadRender: (orderId) =>
         set((state) => ({

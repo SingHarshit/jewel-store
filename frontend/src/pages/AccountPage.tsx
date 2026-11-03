@@ -1,6 +1,19 @@
-import { useState } from 'react';
+import { useState, useEffect } from 'react';
 import { Link, useSearchParams, useNavigate } from 'react-router-dom';
-import { Check, X, Download, Shield, RefreshCw, ChevronRight, Copy, ExternalLink, AlertCircle, LogOut } from 'lucide-react';
+import {
+  Check,
+  X,
+  Download,
+  Shield,
+  RefreshCw,
+  ChevronRight,
+  Copy,
+  ExternalLink,
+  AlertCircle,
+  LogOut,
+  RotateCcw,
+  Sparkles,
+} from 'lucide-react';
 import { motion, AnimatePresence } from 'framer-motion';
 import { useJewelryStore } from '../store/useJewelryStore';
 import { formatPrice } from '../utils/pricingEngine';
@@ -239,6 +252,80 @@ function AccountGuestBanner({ onOpen }: { onOpen: () => void }) {
   );
 }
 
+// ─── Cancel Order Modal ───────────────────────────────────────
+function CancelOrderModal({
+  order,
+  onClose,
+  onConfirm,
+}: {
+  order: Order;
+  onClose: () => void;
+  onConfirm: (reason: string) => Promise<void>;
+}) {
+  const [reason, setReason] = useState('Changed ring style preference before metal casting');
+  const [loading, setLoading] = useState(false);
+
+  const handleSubmit = async (e: React.FormEvent) => {
+    e.preventDefault();
+    setLoading(true);
+    await onConfirm(reason);
+    setLoading(false);
+    onClose();
+  };
+
+  return (
+    <div className="fixed inset-0 z-50 flex items-center justify-center p-4 bg-black/60 backdrop-blur-sm">
+      <motion.div
+        initial={{ opacity: 0, scale: 0.96 }}
+        animate={{ opacity: 1, scale: 1 }}
+        exit={{ opacity: 0, scale: 0.96 }}
+        className="w-full max-w-md p-6 bg-[#FAF9F5] border border-[#E5E1D8] shadow-2xl relative"
+      >
+        <button onClick={onClose} className="absolute top-4 right-4 opacity-50 hover:opacity-100">
+          <X size={18} />
+        </button>
+        <p className="section-label mb-1 text-red-700">Commission Cancellation</p>
+        <h3 style={{ fontFamily: 'var(--font-serif)', fontSize: '1.6rem', fontWeight: 300 }}>
+          Cancel Order {order.orderNumber}
+        </h3>
+        <p className="text-xs text-stone-600 mt-2 mb-4">
+          Cancellations can be processed before lost-wax gold casting begins.
+        </p>
+
+        <form onSubmit={handleSubmit} className="space-y-4">
+          <div>
+            <label className="section-label block mb-1">Reason for Cancellation</label>
+            <textarea
+              required
+              rows={3}
+              value={reason}
+              onChange={(e) => setReason(e.target.value)}
+              className="input-underline text-xs resize-none"
+            />
+          </div>
+
+          <div className="flex gap-2 pt-2">
+            <button
+              type="button"
+              onClick={onClose}
+              className="flex-1 py-2.5 border border-stone-300 text-stone-700 text-xs font-mono uppercase tracking-widest hover:bg-stone-100"
+            >
+              Keep Order
+            </button>
+            <button
+              type="submit"
+              disabled={loading}
+              className="flex-1 py-2.5 bg-red-700 text-white text-xs font-mono uppercase tracking-widest hover:bg-red-800 disabled:opacity-50"
+            >
+              {loading ? 'Cancelling...' : 'Confirm Cancel'}
+            </button>
+          </div>
+        </form>
+      </motion.div>
+    </div>
+  );
+}
+
 // ─── Main Account Page ────────────────────────────────────────
 export default function AccountPage() {
   const [searchParams, setSearchParams] = useSearchParams();
@@ -248,11 +335,18 @@ export default function AccountPage() {
     savedDesigns, vaultItems, orders, removeDesign, addToCart, currency,
     user, updateFingerSize,
     authUser, isAuthenticated, openAuthModal, signOut,
+    cancelOrder, fetchOrders, checkoutOpen, setAppliedVoucherCode,
   } = useJewelryStore();
 
   const [certItem, setCertItem] = useState<VaultItem | null>(null);
   const [resizeItem, setResizeItem] = useState<VaultItem | null>(null);
   const [copiedId, setCopiedId] = useState<string | null>(null);
+  const [cancelOrderTarget, setCancelOrderTarget] = useState<Order | null>(null);
+  const [copiedVoucher, setCopiedVoucher] = useState(false);
+
+  useEffect(() => {
+    fetchOrders();
+  }, [fetchOrders]);
 
   const setTab = (tab: AccountTab) => setSearchParams({ tab });
 
@@ -522,96 +616,201 @@ export default function AccountPage() {
           </h2>
 
           <div className="space-y-8">
-            {orders.map((order) => (
-              <div key={order.id} className="border" style={{ borderColor: 'var(--color-hairline)' }}>
-                {/* Order header */}
-                <div
-                  className="px-6 py-4 flex items-center justify-between border-b"
-                  style={{ borderColor: 'var(--color-hairline)', backgroundColor: 'var(--color-ivory)' }}
-                >
-                  <div>
-                    <p className="section-label mb-0.5">Order {order.orderNumber}</p>
-                    <p className="text-sm" style={{ color: 'var(--color-stone)' }}>
-                      Placed {new Date(order.placedAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}
-                      {order.trackingNumber && ` · DHL: ${order.trackingNumber}`}
-                    </p>
-                  </div>
-                  <div className="text-right">
-                    <p style={{ fontFamily: 'var(--font-serif)', fontSize: '1.3rem', color: 'var(--color-espresso)', fontWeight: 300 }}>
-                      {formatPrice(order.totalUSD, currency)}
-                    </p>
-                    <div className="sku-badge mt-1">{order.items[0]?.sku}</div>
-                  </div>
-                </div>
+            {orders.map((order) => {
+              const isCancelled = order.orderStatus === 'CANCELLED';
+              const isRefunded = order.paymentStatus === 'REFUNDED';
+              const isFailed = order.paymentStatus === 'FAILED';
 
-                {/* CAD approval banner */}
-                {order.currentStage === 'cad_approval' && !order.cadRenderApproved && (
-                  <div className="px-6 pt-4">
-                    <CADApprovalBanner order={order} />
-                  </div>
-                )}
+              return (
+                <div key={order.id} className="border" style={{ borderColor: 'var(--color-hairline)' }}>
+                  {/* Order header */}
+                  <div
+                    className="px-6 py-4 flex flex-col sm:flex-row sm:items-center justify-between gap-4 border-b"
+                    style={{ borderColor: 'var(--color-hairline)', backgroundColor: 'var(--color-ivory)' }}
+                  >
+                    <div>
+                      <div className="flex items-center gap-2 mb-1 flex-wrap">
+                        <p className="section-label mb-0">Order {order.orderNumber}</p>
 
-                {/* Stage timeline */}
-                <div className="px-6 py-6">
-                  <div className="relative">
-                    {/* Connector line */}
-                    <div
-                      className="absolute left-4 top-5 bottom-5 w-px"
-                      style={{ backgroundColor: 'var(--color-hairline)' }}
-                    />
+                        {/* Order status badge */}
+                        <span
+                          className={`text-[0.6rem] font-mono tracking-widest uppercase px-2 py-0.5 border ${
+                            isCancelled
+                              ? 'border-red-300 bg-red-50 text-red-700'
+                              : order.orderStatus === 'COMPLETED'
+                              ? 'border-emerald-300 bg-emerald-50 text-emerald-800'
+                              : order.orderStatus === 'IN_PRODUCTION'
+                              ? 'border-[#C5A880] bg-[#C5A880]/15 text-[#141413]'
+                              : 'border-stone-300 bg-stone-100 text-stone-700'
+                          }`}
+                        >
+                          {order.orderStatus || 'PLACED'}
+                        </span>
 
-                    <div className="space-y-5">
-                      {order.stages.map((stage, idx) => (
-                        <div key={stage.stage} className="relative flex items-start gap-5">
-                          {/* Stage dot */}
-                          <div
-                            className="relative z-10 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
-                            style={{
-                              backgroundColor: !stage.isPending && !stage.isActive
-                                ? 'var(--color-espresso)'
-                                : stage.isActive
-                                ? 'var(--color-champagne)'
-                                : 'var(--color-ivory)',
-                              border: `2px solid ${stage.isActive ? 'var(--color-champagne)' : stage.isPending ? 'var(--color-hairline)' : 'var(--color-espresso)'}`,
-                              ...(stage.isActive ? { animation: 'pulse-ring 2s ease-out infinite' } : {}),
-                            }}
+                        {/* Payment status badge */}
+                        <span
+                          className={`text-[0.6rem] font-mono tracking-widest uppercase px-2 py-0.5 border flex items-center gap-1 ${
+                            order.paymentStatus === 'CAPTURED'
+                              ? 'border-emerald-300 bg-emerald-50 text-emerald-700'
+                              : isFailed
+                              ? 'border-red-300 bg-red-50 text-red-700'
+                              : isRefunded
+                              ? 'border-purple-300 bg-purple-50 text-purple-700'
+                              : 'border-amber-300 bg-amber-50 text-amber-700'
+                          }`}
+                        >
+                          {order.paymentStatus === 'CAPTURED' && <Shield size={10} />}
+                          {isFailed && <AlertCircle size={10} />}
+                          {isRefunded && <RotateCcw size={10} />}
+                          {order.paymentStatus === 'CAPTURED' ? 'PAID & SECURED' : order.paymentStatus || 'PENDING'}
+                        </span>
+                      </div>
+
+                      <p className="text-sm" style={{ color: 'var(--color-stone)' }}>
+                        Placed {new Date(order.placedAt).toLocaleDateString('en-AU', { day: 'numeric', month: 'long', year: 'numeric' })}
+                        {order.trackingNumber && ` · DHL: ${order.trackingNumber}`}
+                      </p>
+                    </div>
+
+                    <div className="flex sm:flex-col items-center sm:items-end justify-between gap-1">
+                      <p style={{ fontFamily: 'var(--font-serif)', fontSize: '1.3rem', color: 'var(--color-espresso)', fontWeight: 300 }}>
+                        {formatPrice(order.totalUSD, currency)}
+                      </p>
+                      <div className="flex items-center gap-2">
+                        <div className="sku-badge">{order.items[0]?.sku}</div>
+                        {!isCancelled && order.currentStage === 'specs_locked' && (
+                          <button
+                            onClick={() => setCancelOrderTarget(order)}
+                            className="text-[0.62rem] font-mono uppercase tracking-wider text-stone-400 hover:text-red-700 transition-colors underline ml-2"
                           >
-                            <span style={{ color: stage.isPending ? 'var(--color-stone)' : 'var(--color-ivory)', fontSize: '0.65rem' }}>
-                              {!stage.isPending ? (
-                                stage.isActive ? ORDER_STAGE_ICONS[stage.stage] : <Check size={12} />
-                              ) : (
-                                <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem' }}>{idx + 1}</span>
-                              )}
-                            </span>
-                          </div>
+                            Cancel
+                          </button>
+                        )}
+                      </div>
+                    </div>
+                  </div>
 
-                          {/* Stage info */}
-                          <div className="flex-1 pt-1">
-                            <p
-                              className="text-sm font-mono tracking-wide"
+                  {/* Payment Failure Warning Banner */}
+                  {isFailed && (
+                    <div className="mx-6 my-4 p-4 bg-red-50 border border-red-200 text-red-800 text-xs flex flex-col sm:flex-row sm:items-center justify-between gap-3">
+                      <div className="flex items-center gap-2">
+                        <AlertCircle size={16} className="text-red-600 flex-shrink-0" />
+                        <span>Payment authorization was declined or cancelled. Retrying payment will activate the 8-stage manufacturing atelier.</span>
+                      </div>
+                      <button
+                        onClick={() => checkoutOpen()}
+                        className="px-4 py-2 bg-red-700 hover:bg-red-800 text-white font-mono text-[0.65rem] tracking-widest uppercase transition-all flex-shrink-0"
+                      >
+                        Retry with Razorpay
+                      </button>
+                    </div>
+                  )}
+
+                  {/* Cancellation Reason Banner */}
+                  {isCancelled && (
+                    <div className="mx-6 my-4 p-4 bg-stone-100 border border-stone-200 text-xs text-stone-700">
+                      <p className="font-mono uppercase tracking-wider text-[0.65rem] text-red-700 mb-0.5 font-medium">
+                        Commission Cancelled
+                      </p>
+                      <p>Reason: {order.cancellationReason || 'Customer requested cancellation prior to casting'}</p>
+                      {order.cancelledAt && (
+                        <p className="text-[0.68rem] text-stone-500 font-mono mt-1">
+                          Processed: {new Date(order.cancelledAt).toLocaleDateString('en-AU')}
+                        </p>
+                      )}
+                    </div>
+                  )}
+
+                  {/* Refund Processed Banner */}
+                  {isRefunded && (
+                    <div className="mx-6 my-4 p-4 bg-purple-50 border border-purple-200 text-xs text-purple-900">
+                      <div className="flex items-center gap-1.5 font-mono uppercase text-[0.65rem] text-purple-700 mb-0.5 font-medium">
+                        <RotateCcw size={12} />
+                        <span>Refund Dispatched via Razorpay</span>
+                      </div>
+                      <p className="font-mono text-xs text-purple-800">Refund Reference ID: {order.refundId || 'rfnd_processed'}</p>
+                    </div>
+                  )}
+
+                  {/* CAD approval banner */}
+                  {!isCancelled && order.currentStage === 'cad_approval' && !order.cadRenderApproved && (
+                    <div className="px-6 pt-4">
+                      <CADApprovalBanner order={order} />
+                    </div>
+                  )}
+
+                  {/* Stage timeline */}
+                  <div className="px-6 py-6">
+                    <div className="relative">
+                      {/* Connector line */}
+                      <div
+                        className="absolute left-4 top-5 bottom-5 w-px"
+                        style={{ backgroundColor: 'var(--color-hairline)' }}
+                      />
+
+                      <div className="space-y-5">
+                        {order.stages.map((stage, idx) => (
+                          <div key={stage.stage} className="relative flex items-start gap-5">
+                            {/* Stage dot */}
+                            <div
+                              className="relative z-10 w-8 h-8 rounded-full flex items-center justify-center flex-shrink-0"
                               style={{
-                                color: stage.isActive ? 'var(--color-espresso)' : stage.isPending ? 'var(--color-stone)' : 'var(--color-espresso)',
-                                fontWeight: stage.isActive ? 500 : 400,
+                                backgroundColor: isCancelled
+                                  ? 'var(--color-ivory)'
+                                  : !stage.isPending && !stage.isActive
+                                  ? 'var(--color-espresso)'
+                                  : stage.isActive
+                                  ? 'var(--color-champagne)'
+                                  : 'var(--color-ivory)',
+                                border: `2px solid ${
+                                  isCancelled
+                                    ? 'var(--color-hairline)'
+                                    : stage.isActive
+                                    ? 'var(--color-champagne)'
+                                    : stage.isPending
+                                    ? 'var(--color-hairline)'
+                                    : 'var(--color-espresso)'
+                                }`,
+                                ...(stage.isActive && !isCancelled ? { animation: 'pulse-ring 2s ease-out infinite' } : {}),
                               }}
                             >
-                              {stage.label}
-                            </p>
-                            <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--color-stone)' }}>
-                              {stage.description}
-                            </p>
-                            {stage.completedAt && (
-                              <p className="text-xs mt-0.5 font-mono" style={{ color: 'var(--color-champagne)' }}>
-                                Completed {new Date(stage.completedAt).toLocaleDateString('en-AU')}
+                              <span style={{ color: stage.isPending || isCancelled ? 'var(--color-stone)' : 'var(--color-ivory)', fontSize: '0.65rem' }}>
+                                {!stage.isPending && !isCancelled ? (
+                                  stage.isActive ? ORDER_STAGE_ICONS[stage.stage] : <Check size={12} />
+                                ) : (
+                                  <span style={{ fontFamily: 'var(--font-mono)', fontSize: '0.6rem' }}>{idx + 1}</span>
+                                )}
+                              </span>
+                            </div>
+
+                            {/* Stage info */}
+                            <div className="flex-1 pt-1">
+                              <p
+                                className="text-sm font-mono tracking-wide"
+                                style={{
+                                  color: isCancelled ? 'var(--color-stone)' : stage.isActive ? 'var(--color-espresso)' : stage.isPending ? 'var(--color-stone)' : 'var(--color-espresso)',
+                                  fontWeight: stage.isActive && !isCancelled ? 500 : 400,
+                                }}
+                              >
+                                {stage.label} {isCancelled && <span className="text-xs text-red-600 font-normal">(Halted)</span>}
                               </p>
-                            )}
+                              <p className="text-xs mt-0.5 leading-relaxed" style={{ color: 'var(--color-stone)' }}>
+                                {stage.description}
+                              </p>
+                              {stage.completedAt && !isCancelled && (
+                                <p className="text-xs mt-0.5 font-mono" style={{ color: 'var(--color-champagne)' }}>
+                                  Completed {new Date(stage.completedAt).toLocaleDateString('en-AU')}
+                                </p>
+                              )}
+                            </div>
                           </div>
-                        </div>
-                      ))}
+                        ))}
+                      </div>
                     </div>
                   </div>
                 </div>
-              </div>
-            ))}
+              );
+            })}
           </div>
         </div>
       )}
@@ -691,20 +890,71 @@ export default function AccountPage() {
               className="p-5"
               style={{ backgroundColor: 'var(--color-ivory)', border: '1px solid var(--color-hairline)' }}
             >
-              <p className="section-label mb-2" style={{ color: 'var(--color-champagne)' }}>Sizing Kit Voucher</p>
-              {user.sizingKitVoucherCode ? (
+              <div className="flex items-center justify-between mb-2">
+                <p className="section-label mb-0" style={{ color: 'var(--color-champagne)' }}>
+                  Sizing Kit Voucher Credit
+                </p>
+                {(authUser?.sizingKitVoucherCode || user.sizingKitVoucherCode) && (
+                  <span
+                    className={`text-[0.6rem] font-mono uppercase tracking-widest px-2 py-0.5 border ${
+                      (authUser?.sizingKitRedeemed ?? user.sizingKitRedeemed)
+                        ? 'border-stone-300 text-stone-500 bg-stone-50'
+                        : 'border-emerald-300 text-emerald-800 bg-emerald-50'
+                    }`}
+                  >
+                    {(authUser?.sizingKitRedeemed ?? user.sizingKitRedeemed) ? 'Redeemed' : 'Active $19 Credit'}
+                  </span>
+                )}
+              </div>
+
+              {(authUser?.sizingKitVoucherCode || user.sizingKitVoucherCode) ? (
                 <>
-                  <p style={{ fontFamily: 'var(--font-mono)', fontSize: '0.9rem', color: 'var(--color-espresso)', letterSpacing: '0.1em' }}>
-                    {user.sizingKitVoucherCode}
+                  <div className="flex items-center gap-2 mt-2">
+                    <div className="p-2.5 bg-white border border-[#E5E1D8] font-mono text-sm tracking-widest text-[#141413] flex-1">
+                      {authUser?.sizingKitVoucherCode || user.sizingKitVoucherCode}
+                    </div>
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const code = authUser?.sizingKitVoucherCode || user.sizingKitVoucherCode;
+                        if (code) {
+                          navigator.clipboard?.writeText(code);
+                          setCopiedVoucher(true);
+                          setTimeout(() => setCopiedVoucher(false), 2000);
+                        }
+                      }}
+                      className="px-3 py-2.5 border border-[#141413] text-[0.65rem] font-mono tracking-widest uppercase hover:bg-[#141413] hover:text-[#FAF9F5] transition-all flex items-center gap-1"
+                    >
+                      {copiedVoucher ? <Check size={12} /> : <Copy size={12} />}
+                      {copiedVoucher ? 'Copied' : 'Copy'}
+                    </button>
+                  </div>
+
+                  <p className="text-xs mt-2" style={{ color: 'var(--color-stone)' }}>
+                    {(authUser?.sizingKitRedeemed ?? user.sizingKitRedeemed)
+                      ? '✓ This voucher has been credited toward your bespoke commission.'
+                      : '$19 credit — automatically deductible upon checkout for any bespoke ring.'}
                   </p>
-                  <p className="text-xs mt-1" style={{ color: 'var(--color-stone)' }}>
-                    {user.sizingKitRedeemed ? '✓ Redeemed' : '$19 credit — redeemable on any ring order'}
-                  </p>
+
+                  {!(authUser?.sizingKitRedeemed ?? user.sizingKitRedeemed) && (
+                    <button
+                      type="button"
+                      onClick={() => {
+                        const code = authUser?.sizingKitVoucherCode || user.sizingKitVoucherCode;
+                        if (code) setAppliedVoucherCode(code);
+                        checkoutOpen();
+                      }}
+                      className="mt-3 px-4 py-2 bg-[#141413] text-[#FAF9F5] text-[0.65rem] font-mono tracking-widest uppercase hover:opacity-90 transition-all flex items-center gap-1.5"
+                    >
+                      <Sparkles size={12} className="text-[#C5A880]" />
+                      Apply $19 to Bag
+                    </button>
+                  )}
                 </>
               ) : (
                 <>
                   <p className="text-sm mb-3" style={{ color: 'var(--color-stone)' }}>
-                    Order a Heirest Ring Sizing Kit to receive a redeemable $19 credit.
+                    Order a Heirest Ring Sizing Kit to receive an automatic redeemable $19 credit voucher.
                   </p>
                   <Link
                     to="/sizing-kit"
@@ -724,6 +974,15 @@ export default function AccountPage() {
       <AnimatePresence>
         {certItem && <CertificateModal item={certItem} onClose={() => setCertItem(null)} />}
         {resizeItem && <ResizingModal item={resizeItem} onClose={() => setResizeItem(null)} />}
+        {cancelOrderTarget && (
+          <CancelOrderModal
+            order={cancelOrderTarget}
+            onClose={() => setCancelOrderTarget(null)}
+            onConfirm={async (reason) => {
+              await cancelOrder(cancelOrderTarget.id, reason);
+            }}
+          />
+        )}
       </AnimatePresence>
     </div>
   );

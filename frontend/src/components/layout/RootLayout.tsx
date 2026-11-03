@@ -5,6 +5,7 @@ import Navbar from './Navbar';
 import CartDrawer from './CartDrawer';
 import SearchDrawer from './SearchDrawer';
 import AuthDrawer from '../auth/AuthDrawer';
+import CheckoutModal from '../checkout/CheckoutModal';
 import Footer from './Footer';
 import { useJewelryStore } from '../../store/useJewelryStore';
 
@@ -22,6 +23,7 @@ export default function RootLayout() {
       <Navbar />
       <SearchDrawer />
       <CartDrawer />
+      <CheckoutModal />
       <AuthDrawer />
       <main className="flex-1">
         <Outlet />
