@@ -1,13 +1,15 @@
 # 📘 Full-Stack CI/CD & EC2 Deployment Master Guide
+
 > A practical handbook on deploying containerized React + Node.js + PostgreSQL + Redis applications to AWS EC2 using GitHub Actions and Amazon ECR — including every real-world error encountered and how we fixed it.
 
 ---
 
 ## 📑 Table of Contents
+
 1. [End-to-End Architecture](#1-end-to-end-architecture)
-2. [Prerequisites & Repository Structure](#2-prerequisites--repository-structure)
+2. [Prerequisites &amp; Repository Structure](#2-prerequisites--repository-structure)
 3. [Step-by-Step CI/CD Blueprint](#3-step-by-step-cicd-blueprint)
-4. [The Wall of Bummers: Real Failures, Root Causes & Fixes](#4-the-wall-of-bummers-real-failures-root-causes--fixes)
+4. [The Wall of Bummers: Real Failures, Root Causes &amp; Fixes](#4-the-wall-of-bummers-real-failures-root-causes--fixes)
    - [Bummer 1: Local Port 5432 Collision](#bummer-1-local-port-5432-collision)
    - [Bummer 2: Sensitive `.env` Committed to Git](#bummer-2-sensitive-env-committed-to-git)
    - [Bummer 3: CI Test Stage Failed (`ZodError: DATABASE_URL undefined`)](#bummer-3-ci-test-stage-failed-zoderror-database_url-undefined)
@@ -17,7 +19,7 @@
    - [Bummer 7: Git Merge Conflict Aborted Deployment on EC2](#bummer-7-git-merge-conflict-aborted-deployment-on-ec2)
    - [Bummer 8: Blank ECR Environment Variables in SSH Subshell](#bummer-8-blank-ecr-environment-variables-in-ssh-subshell)
 5. [How to Re-create This Pipeline from Scratch](#5-how-to-re-create-this-pipeline-from-scratch)
-6. [Why You Cannot Reach Your App via Public IP Yet & Next Steps](#6-why-you-cannot-reach-your-app-via-public-ip-yet--next-steps)
+6. [Why You Cannot Reach Your App via Public IP Yet &amp; Next Steps](#6-why-you-cannot-reach-your-app-via-public-ip-yet--next-steps)
 
 ---
 
@@ -97,6 +99,7 @@ Here are the exact issues we faced during the setup, why they happened, and how 
 ---
 
 ### Bummer 1: Local Port 5432 Collision
+
 - **What Happened**: Running `docker compose up` on the developer machine failed with:
   ```text
   Bind for 127.0.0.1:5432 failed: port is already allocated
@@ -108,11 +111,13 @@ Here are the exact issues we faced during the setup, why they happened, and how 
   ports:
     - "${POSTGRES_PORT:-5433}:5432"
   ```
+
   *Key Insight*: Inside the Docker bridge network, containers communicate via `postgres:5432`. Host port mappings only affect external connections from outside Docker. Changing the host port to `5433` avoids collisions without changing application connection strings.
 
 ---
 
 ### Bummer 2: Sensitive `.env` Committed to Git
+
 - **What Happened**: The root `.env` file containing database passwords and test payment credentials was committed and pushed to GitHub.
 - **Why It Happened**: There was no root `.gitignore` file in the workspace; only sub-folders had `.gitignore` files.
 - **The Fix**:
@@ -127,6 +132,7 @@ Here are the exact issues we faced during the setup, why they happened, and how 
 ---
 
 ### Bummer 3: CI Test Stage Failed (`ZodError: DATABASE_URL undefined`)
+
 - **What Happened**: The first GitHub Actions run failed during `npm run test` with:
   ```text
   ZodError: [
@@ -138,7 +144,7 @@ Here are the exact issues we faced during the setup, why they happened, and how 
     }
   ]
   ```
-- **Why It Happened**: 
+- **Why It Happened**:
   1. In `backend/src/config/env.ts`, `DATABASE_URL: z.string().min(1)` had no `.default(...)`.
   2. On the local PC, `backend/.env` existed. In GitHub Actions cloud runners, `.env` is intentionally absent for security.
   3. The Vitest suite performs full integration tests against PostgreSQL and Redis, which were not running on the cloud runner.
@@ -153,11 +159,12 @@ Here are the exact issues we faced during the setup, why they happened, and how 
 ---
 
 ### Bummer 4: AWS Organization SCP Explicit Deny
+
 - **What Happened**: The `build-and-push` stage failed when authenticating with ECR:
   ```text
   Error: User: arn:aws:iam::993499103846:user/github-actions-heirest-deployer is not authorized to perform: ecr:GetAuthorizationToken on resource: * with an explicit deny in a service control policy: arn:aws:organizations::791316000757:policy/.../p-omyw8jtf
   ```
-- **Why It Happened**: 
+- **Why It Happened**:
   AWS Accounts managed within an AWS Organization (student labs, enterprise sandboxes) often have Service Control Policies (SCPs) that restrict API calls to specific regions or disable certain services. If the GitHub Secret `AWS_REGION` did not match the allowed region, the SCP explicitly denied the request.
 - **The Fix**:
   Configured `AWS_REGION` to match the exact region where the EC2 instance and ECR repositories reside.
@@ -165,11 +172,12 @@ Here are the exact issues we faced during the setup, why they happened, and how 
 ---
 
 ### Bummer 5: Docker Hub Pull Access Denied (`heirest_backend:latest`)
+
 - **What Happened**: On EC2, deployment crashed with:
   ```text
   Error response from daemon: pull access denied for heirest_backend, repository does not exist or may require 'docker login'
   ```
-- **Why It Happened**: 
+- **Why It Happened**:
   1. `docker-compose.yml` had `image: ${BACKEND_IMAGE:-heirest_backend:latest}`.
   2. `BACKEND_IMAGE` was received as an empty string on EC2.
   3. Docker Compose fell back to the local name `heirest_backend:latest` and attempted to pull it from the public Docker Hub registry, where it does not exist.
@@ -180,6 +188,7 @@ Here are the exact issues we faced during the setup, why they happened, and how 
 ---
 
 ### Bummer 6: SSH Action Froze for 17+ Minutes
+
 - **What Happened**: GitHub Actions stayed on `Trigger Remote Deployment via SSH` for over 17 minutes without printing anything after `Drone SSH version 1.8.0`.
 - **Why It Happened**:
   1. The default connection timeout in `appleboy/ssh-action` is up to 30 minutes.
@@ -191,18 +200,20 @@ Here are the exact issues we faced during the setup, why they happened, and how 
      timeout: 60s
      command_timeout: 10m
      ```
+
      This prevents the runner from hanging if an IP is unreachable.
 
 ---
 
 ### Bummer 7: Git Merge Conflict Aborted Deployment on EC2
+
 - **What Happened**: Deployment failed on EC2 with:
   ```text
   error: Your local changes to the following files would be overwritten by merge:
       deploy.sh
   Please commit your changes or stash them before you merge. Aborting
   ```
-- **Why It Happened**: 
+- **Why It Happened**:
   When testing manually on EC2, permissions were modified (`chmod +x deploy.sh`). Standard `git pull` considers permission/file modifications local changes and refuses to pull.
 - **The Fix**:
   In `.github/workflows/deploy.yml`, changed the pull command to an authoritative reset:
@@ -210,11 +221,13 @@ Here are the exact issues we faced during the setup, why they happened, and how 
   git fetch origin main
   git reset --hard origin/main
   ```
+
   *Key Insight*: In automated deployments, the cloud server should never have untracked manual edits. `git reset --hard origin/main` ensures the server always mirrors the exact state of the repository.
 
 ---
 
 ### Bummer 8: Blank ECR Environment Variables in SSH Subshell
+
 - **What Happened**:
   ```text
   🚀 Deploying with images:
@@ -222,7 +235,7 @@ Here are the exact issues we faced during the setup, why they happened, and how 
      Backend:  
      Frontend: 
   ```
-- **Why It Happened**: 
+- **Why It Happened**:
   In GitHub Actions syntax, the `env` context is **not available** inside `jobs.<job_id>.outputs`. Passing dynamic step outputs between jobs often yields empty strings if context rules are violated.
 - **The Fix**:
   Eliminated the fragile inter-job output chaining and used deterministic template variables directly in the deployment step:
@@ -262,6 +275,7 @@ When starting a new project, follow these 5 steps:
 If your GitHub Actions pipeline succeeded with green checkmarks but opening `http://<EC2-PUBLIC-IP>` in your browser times out or does not load, here is why:
 
 ### Cause 1: EC2 Security Group Inbound Rule for Port 80 (HTTP) is Missing
+
 - **The Reason**: By default, EC2 instances only open port 22 (SSH). Even if Nginx is listening on port 80 inside EC2, AWS firewall blocks outside traffic from reaching port 80 unless explicitly permitted.
 - **How to Fix**:
   1. Open [AWS EC2 Console](https://console.aws.amazon.com/ec2/) -> Click **Instances** -> Select your instance.
@@ -275,6 +289,7 @@ If your GitHub Actions pipeline succeeded with green checkmarks but opening `htt
 ---
 
 ### Cause 2: Browser Automatically Redirected to `https://`
+
 - **The Reason**: Modern browsers (Chrome, Edge, Brave) frequently auto-upgrade addresses to `https://`. Since SSL is not yet configured, port 443 refuses the connection.
 - **How to Fix**:
   - Explicitly type **`http://`** before your IP in the address bar:
@@ -286,18 +301,25 @@ If your GitHub Actions pipeline succeeded with green checkmarks but opening `htt
 ---
 
 ### Cause 3: Verifying Containers are Running on EC2
+
 Connect to your EC2 instance via SSH and verify running containers:
+
 ```bash
 ssh -i "path/to/heirest-key.pem" ubuntu@<YOUR-EC2-PUBLIC-IP>
 cd ~/heirest
 docker compose ps
 ```
+
 All 4 containers (`heirest_frontend`, `heirest_backend`, `heirest_postgres`, `heirest_redis`) should show `Up`.
 
 ---
 
 ### What to Do Next After This
+
 Once port 80 is accessible, the next logical steps for production hosting are:
+
 1. **Assign an Elastic IP (EIP)**: Prevents the public IP from changing every time the EC2 instance is rebooted.
 2. **Attach a Custom Domain**: Point your DNS (e.g. Route53, Namecheap, Cloudflare) via an `A record` to your Elastic IP.
 3. **Configure Free SSL Certificate via Let's Encrypt / Certbot**: Enables secure `https://` traffic and Razorpay live payment gateways.
+
+   for learning purpose only
