@@ -107,6 +107,10 @@ jobs:
         id: image-meta
         run: |
           REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          if [ -z "$REGISTRY" ]; then
+            ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
+            REGISTRY="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
+          fi
           BACKEND_TAG="${REGISTRY}/${{ env.ECR_BACKEND_REPO }}:latest"
           FRONTEND_TAG="${REGISTRY}/${{ env.ECR_FRONTEND_REPO }}:latest"
           echo "registry=${REGISTRY}" >> "$GITHUB_OUTPUT"
@@ -162,6 +166,8 @@ jobs:
           username: ${{ secrets.EC2_USER || 'ubuntu' }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: ${{ secrets.EC2_PORT || 22 }}
+          timeout: 60s
+          command_timeout: 10m
           envs: AWS_REGION,ECR_REGISTRY,BACKEND_IMAGE,FRONTEND_IMAGE,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,APP_DIR
           script: |
             set -e
