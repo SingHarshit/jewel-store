@@ -10,6 +10,7 @@ permissions:
 
 env:
   AWS_REGION: ${{ secrets.AWS_REGION || 'ap-south-1' }}
+  AWS_ACCOUNT_ID: ${{ secrets.AWS_ACCOUNT_ID || '993499103846' }}
   ECR_BACKEND_REPO: ${{ vars.ECR_BACKEND_REPO || 'heirest-backend' }}
   ECR_FRONTEND_REPO: ${{ vars.ECR_FRONTEND_REPO || 'heirest-frontend' }}
 
@@ -81,10 +82,6 @@ jobs:
     name: Build & Push Images to Amazon ECR
     needs: ci
     runs-on: ubuntu-latest
-    outputs:
-      registry: ${{ steps.image-meta.outputs.registry }}
-      backend_image: ${{ steps.image-meta.outputs.backend_image }}
-      frontend_image: ${{ steps.image-meta.outputs.frontend_image }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -103,20 +100,6 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
-      - name: Prepare Image Metadata
-        id: image-meta
-        run: |
-          REGISTRY="${{ steps.login-ecr.outputs.registry }}"
-          if [ -z "$REGISTRY" ]; then
-            ACCOUNT_ID=$(aws sts get-caller-identity --query Account --output text)
-            REGISTRY="${ACCOUNT_ID}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
-          fi
-          BACKEND_TAG="${REGISTRY}/${{ env.ECR_BACKEND_REPO }}:latest"
-          FRONTEND_TAG="${REGISTRY}/${{ env.ECR_FRONTEND_REPO }}:latest"
-          echo "registry=${REGISTRY}" >> "$GITHUB_OUTPUT"
-          echo "backend_image=${BACKEND_TAG}" >> "$GITHUB_OUTPUT"
-          echo "frontend_image=${FRONTEND_TAG}" >> "$GITHUB_OUTPUT"
-
       - name: Build & Push Backend Docker Image
         uses: docker/build-push-action@v5
         with:
@@ -124,8 +107,8 @@ jobs:
           file: ./backend/Dockerfile
           push: true
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REPO }}:${{ github.sha }}
-            ${{ steps.image-meta.outputs.backend_image }}
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_BACKEND_REPO }}:${{ github.sha }}
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_BACKEND_REPO }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -138,8 +121,8 @@ jobs:
           build-args: |
             VITE_API_URL=${{ vars.VITE_API_URL || '' }}
           tags: |
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:${{ github.sha }}
-            ${{ steps.image-meta.outputs.frontend_image }}
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_FRONTEND_REPO }}:${{ github.sha }}
+            ${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_FRONTEND_REPO }}:latest
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -153,14 +136,6 @@ jobs:
     steps:
       - name: Trigger Remote Deployment via SSH
         uses: appleboy/ssh-action@v1.2.0
-        env:
-          AWS_REGION: ${{ env.AWS_REGION }}
-          ECR_REGISTRY: ${{ needs.build-and-push.outputs.registry }}
-          BACKEND_IMAGE: ${{ needs.build-and-push.outputs.backend_image }}
-          FRONTEND_IMAGE: ${{ needs.build-and-push.outputs.frontend_image }}
-          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
-          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
-          APP_DIR: ${{ vars.APP_DIR || '/home/ubuntu/heirest' }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER || 'ubuntu' }}
@@ -168,19 +143,27 @@ jobs:
           port: ${{ secrets.EC2_PORT || 22 }}
           timeout: 60s
           command_timeout: 10m
-          envs: AWS_REGION,ECR_REGISTRY,BACKEND_IMAGE,FRONTEND_IMAGE,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,APP_DIR
           script: |
             set -e
-            APP_DIR="${APP_DIR:-/home/ubuntu/heirest}"
+            APP_DIR="${{ vars.APP_DIR || '/home/ubuntu/heirest' }}"
             cd "$APP_DIR"
 
-            # Sync updated configuration and scripts
-            git pull origin main || true
+            # Sync code cleanly by discarding any local merge conflict on EC2
+            git fetch origin main
+            git reset --hard origin/main
             chmod +x deploy.sh
 
+            # Export explicit ECR image and AWS parameters
+            export AWS_REGION="${{ env.AWS_REGION }}"
+            export ECR_REGISTRY="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com"
+            export BACKEND_IMAGE="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_BACKEND_REPO }}:latest"
+            export FRONTEND_IMAGE="${{ env.AWS_ACCOUNT_ID }}.dkr.ecr.${{ env.AWS_REGION }}.amazonaws.com/${{ env.ECR_FRONTEND_REPO }}:latest"
+            export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
+            export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+
             echo "🚀 Deploying with images:"
-            echo "   Registry: ${ECR_REGISTRY}"
-            echo "   Backend:  ${BACKEND_IMAGE}"
-            echo "   Frontend: ${FRONTEND_IMAGE}"
+            echo "   Registry: $ECR_REGISTRY"
+            echo "   Backend:  $BACKEND_IMAGE"
+            echo "   Frontend: $FRONTEND_IMAGE"
 
             ./deploy.sh
