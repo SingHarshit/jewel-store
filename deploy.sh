@@ -50,8 +50,14 @@ if [ -f .env ]; then
 fi
 
 # 3. Pull latest backend & frontend images from ECR
-echo "📦 Pulling updated application container images..."
-docker compose pull backend frontend
+if [ -n "${BACKEND_IMAGE:-}" ] && [[ "$BACKEND_IMAGE" == *"/"* ]]; then
+  echo "📦 Pulling updated application container images from registry..."
+  docker compose pull backend frontend
+else
+  echo "⚠️ Warning: BACKEND_IMAGE is not set to a remote registry URL ($BACKEND_IMAGE)."
+  echo "   Building from source locally..."
+  docker compose build backend frontend
+fi
 
 # 4. Deploy updated containers (leaving Postgres & Redis untouched)
 echo "🔄 Recreating backend and frontend containers..."

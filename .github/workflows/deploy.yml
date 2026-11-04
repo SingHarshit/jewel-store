@@ -82,9 +82,9 @@ jobs:
     needs: ci
     runs-on: ubuntu-latest
     outputs:
-      registry: ${{ steps.login-ecr.outputs.registry }}
-      backend_image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REPO }}:latest
-      frontend_image: ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:latest
+      registry: ${{ steps.image-meta.outputs.registry }}
+      backend_image: ${{ steps.image-meta.outputs.backend_image }}
+      frontend_image: ${{ steps.image-meta.outputs.frontend_image }}
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -103,6 +103,16 @@ jobs:
         id: login-ecr
         uses: aws-actions/amazon-ecr-login@v2
 
+      - name: Prepare Image Metadata
+        id: image-meta
+        run: |
+          REGISTRY="${{ steps.login-ecr.outputs.registry }}"
+          BACKEND_TAG="${REGISTRY}/${{ env.ECR_BACKEND_REPO }}:latest"
+          FRONTEND_TAG="${REGISTRY}/${{ env.ECR_FRONTEND_REPO }}:latest"
+          echo "registry=${REGISTRY}" >> "$GITHUB_OUTPUT"
+          echo "backend_image=${BACKEND_TAG}" >> "$GITHUB_OUTPUT"
+          echo "frontend_image=${FRONTEND_TAG}" >> "$GITHUB_OUTPUT"
+
       - name: Build & Push Backend Docker Image
         uses: docker/build-push-action@v5
         with:
@@ -111,7 +121,7 @@ jobs:
           push: true
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REPO }}:${{ github.sha }}
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_BACKEND_REPO }}:latest
+            ${{ steps.image-meta.outputs.backend_image }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -125,7 +135,7 @@ jobs:
             VITE_API_URL=${{ vars.VITE_API_URL || '' }}
           tags: |
             ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:${{ github.sha }}
-            ${{ steps.login-ecr.outputs.registry }}/${{ env.ECR_FRONTEND_REPO }}:latest
+            ${{ steps.image-meta.outputs.frontend_image }}
           cache-from: type=gha
           cache-to: type=gha,mode=max
 
@@ -139,26 +149,32 @@ jobs:
     steps:
       - name: Trigger Remote Deployment via SSH
         uses: appleboy/ssh-action@v1.2.0
+        env:
+          AWS_REGION: ${{ env.AWS_REGION }}
+          ECR_REGISTRY: ${{ needs.build-and-push.outputs.registry }}
+          BACKEND_IMAGE: ${{ needs.build-and-push.outputs.backend_image }}
+          FRONTEND_IMAGE: ${{ needs.build-and-push.outputs.frontend_image }}
+          AWS_ACCESS_KEY_ID: ${{ secrets.AWS_ACCESS_KEY_ID }}
+          AWS_SECRET_ACCESS_KEY: ${{ secrets.AWS_SECRET_ACCESS_KEY }}
+          APP_DIR: ${{ vars.APP_DIR || '/home/ubuntu/heirest' }}
         with:
           host: ${{ secrets.EC2_HOST }}
           username: ${{ secrets.EC2_USER || 'ubuntu' }}
           key: ${{ secrets.EC2_SSH_KEY }}
           port: ${{ secrets.EC2_PORT || 22 }}
+          envs: AWS_REGION,ECR_REGISTRY,BACKEND_IMAGE,FRONTEND_IMAGE,AWS_ACCESS_KEY_ID,AWS_SECRET_ACCESS_KEY,APP_DIR
           script: |
             set -e
-            APP_DIR="${{ vars.APP_DIR || '/home/ubuntu/heirest' }}"
+            APP_DIR="${APP_DIR:-/home/ubuntu/heirest}"
             cd "$APP_DIR"
 
             # Sync updated configuration and scripts
             git pull origin main || true
             chmod +x deploy.sh
 
-            # Pass runtime variables to deploy script
-            export AWS_REGION="${{ env.AWS_REGION }}"
-            export ECR_REGISTRY="${{ needs.build-and-push.outputs.registry }}"
-            export BACKEND_IMAGE="${{ needs.build-and-push.outputs.backend_image }}"
-            export FRONTEND_IMAGE="${{ needs.build-and-push.outputs.frontend_image }}"
-            export AWS_ACCESS_KEY_ID="${{ secrets.AWS_ACCESS_KEY_ID }}"
-            export AWS_SECRET_ACCESS_KEY="${{ secrets.AWS_SECRET_ACCESS_KEY }}"
+            echo "🚀 Deploying with images:"
+            echo "   Registry: ${ECR_REGISTRY}"
+            echo "   Backend:  ${BACKEND_IMAGE}"
+            echo "   Frontend: ${FRONTEND_IMAGE}"
 
             ./deploy.sh
