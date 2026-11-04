@@ -20,6 +20,29 @@ jobs:
   ci:
     name: Test & Build Validation
     runs-on: ubuntu-latest
+    services:
+      postgres:
+        image: postgres:16-alpine
+        env:
+          POSTGRES_USER: postgres
+          POSTGRES_PASSWORD: postgres
+          POSTGRES_DB: heirest_jewelry
+        ports:
+          - 5432:5432
+        options: >-
+          --health-cmd pg_isready
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
+      redis:
+        image: redis:7-alpine
+        ports:
+          - 6379:6379
+        options: >-
+          --health-cmd "redis-cli ping"
+          --health-interval 5s
+          --health-timeout 5s
+          --health-retries 5
     steps:
       - name: Checkout Code
         uses: actions/checkout@v4
@@ -33,9 +56,16 @@ jobs:
 
       - name: Install Backend Dependencies & Run Tests
         working-directory: ./backend
+        env:
+          NODE_ENV: test
+          DATABASE_URL: "postgresql://postgres:postgres@localhost:5432/heirest_jewelry?schema=public"
+          JWT_SECRET: "heirest-super-secret-test-jwt-key-2026"
+          REDIS_URL: "redis://localhost:6379"
         run: |
           npm ci
           npx prisma generate
+          npx prisma db push --skip-generate
+          npx tsx prisma/seed.ts
           npm run test
 
       - name: Validate Frontend Production Build
