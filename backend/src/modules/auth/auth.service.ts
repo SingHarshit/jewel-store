@@ -1,8 +1,12 @@
 import bcrypt from 'bcryptjs';
+import { OAuth2Client } from 'google-auth-library';
 import { Role } from '@prisma/client';
 import { prisma } from '../../config/db.js';
+import { env } from '../../config/env.js';
 import { ApiError } from '../../utils/ApiError.js';
 import { signToken } from '../../utils/jwt.js';
+
+const googleClient = new OAuth2Client(env.GOOGLE_CLIENT_ID);
 
 export const authService = {
   async register(input: {
@@ -131,6 +135,71 @@ export const authService = {
           role: Role.CUSTOMER,
           membershipTier: 'Private Client',
           sizingKitVoucherCode: `HEIREST-KIT-${Math.floor(10 + Math.random() * 90)}`
+        }
+      });
+    }
+
+    const roleLower = user.role.toLowerCase() as 'customer' | 'admin';
+    const token = signToken({
+      id: user.id,
+      email: user.email,
+      role: roleLower,
+      authorHandle: user.authorHandle
+    });
+
+    const { passwordHash: _, ...safeUser } = user;
+    return { user: { ...safeUser, role: roleLower }, token };
+  },
+
+  async loginWithGoogle(credential: string) {
+    let payload;
+    try {
+      const ticket = await googleClient.verifyIdToken({
+        idToken: credential,
+        audience: env.GOOGLE_CLIENT_ID
+      });
+      payload = ticket.getPayload();
+    } catch {
+      throw new ApiError(401, 'Google authentication failed. Please try again.');
+    }
+
+    if (!payload?.sub || !payload.email || payload.email_verified !== true) {
+      throw new ApiError(401, 'Google account email could not be verified.');
+    }
+
+    const email = payload.email.toLowerCase();
+    const firstName = payload.given_name?.trim() || email.split('@')[0];
+    const lastName = payload.family_name?.trim() || '';
+    let user = await prisma.user.findUnique({ where: { email } });
+
+    if (!user) {
+      const baseHandle = `@${email.split('@')[0].replace(/[^a-zA-Z0-9]/g, '').toLowerCase() || 'user'}`;
+      let authorHandle = baseHandle;
+      let suffix = 1;
+      while (await prisma.user.findUnique({ where: { authorHandle } })) {
+        authorHandle = `${baseHandle}${suffix}`;
+        suffix += 1;
+      }
+
+      user = await prisma.user.create({
+        data: {
+          email,
+          firstName,
+          lastName,
+          authorHandle,
+          avatarUrl: payload.picture,
+          role: Role.CUSTOMER,
+          membershipTier: 'Private Client',
+          sizingKitVoucherCode: `HEIREST-KIT-${Math.floor(10 + Math.random() * 90)}`
+        }
+      });
+    } else if ((!user.avatarUrl && payload.picture) || (!user.firstName && payload.given_name) || (!user.lastName && payload.family_name)) {
+      user = await prisma.user.update({
+        where: { id: user.id },
+        data: {
+          ...(user.avatarUrl ? {} : { avatarUrl: payload.picture }),
+          ...(user.firstName ? {} : { firstName }),
+          ...(user.lastName ? {} : { lastName })
         }
       });
     }

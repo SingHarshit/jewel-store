@@ -298,7 +298,21 @@ export default function AuthPage() {
     finally { setRegLoading(false); }
   };
 
-  const handleGoogle = async () => { try { const r = await authApi.loginWithGoogle(); handleSuccess(r.user, r.token); } catch {} };
+  const handleGoogle = async () => {
+    setLoginError('');
+    setRegError('');
+    setLoginLoading(true);
+    try {
+      const r = await authApi.loginWithGoogle();
+      handleSuccess(r.user, r.token);
+    } catch (err: any) {
+      const message = err?.response?.data?.error?.message ?? err?.message ?? 'Google sign-in failed.';
+      if (view === 'register') setRegError(message);
+      else setLoginError(message);
+    } finally {
+      setLoginLoading(false);
+    }
+  };
   const handleApple  = async () => { try { const r = await authApi.loginWithApple();  handleSuccess(r.user, r.token); } catch {} };
   const handleDemo   = () => { const r = authApi.loginAsDemo(); handleSuccess(r.user, r.token); };
 

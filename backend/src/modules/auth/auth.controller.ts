@@ -22,6 +22,11 @@ export const authController = {
     res.status(200).json(result);
   }),
 
+  google: asyncHandler(async (req, res) => {
+    const result = await authService.loginWithGoogle(req.body.credential);
+    res.status(200).json(result);
+  }),
+
   demoCustomer: asyncHandler(async (_req, res) => {
     const result = await authService.loginAsDemo('customer');
     res.status(200).json(result);

@@ -204,10 +204,19 @@ export default function AuthDrawer() {
   };
 
   const handleGoogle = async () => {
+    setLoginError('');
+    setRegError('');
+    setLoginLoading(true);
     try {
       const res = await authApi.loginWithGoogle();
       handleSuccess(res.user, res.token);
-    } catch { /* silent */ }
+    } catch (err: any) {
+      const message = err?.response?.data?.error?.message ?? err?.message ?? 'Google sign-in failed.';
+      if (authModalView === 'register') setRegError(message);
+      else setLoginError(message);
+    } finally {
+      setLoginLoading(false);
+    }
   };
   const handleApple = async () => {
     try {
@@ -747,4 +756,3 @@ function AppleIcon() {
     </svg>
   );
 }
-

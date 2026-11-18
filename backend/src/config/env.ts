@@ -7,6 +7,9 @@ const schema = z.object({
   JWT_SECRET: z.string().min(10).default('heirest-super-secret-2026'),
   REDIS_URL: z.string().optional().default('redis://localhost:6379'),
   FRONTEND_URL: z.string().default('http://localhost:5173'),
+  GOOGLE_CLIENT_ID: z.string().min(1),
+  GOOGLE_CLIENT_SECRET: z.string().min(1),
+  GOOGLE_CALLBACK_URL: z.string().url(),
   RAZORPAY_KEY_ID: z.string().default('rzp_test_HeirestDemoKey2026'),
   RAZORPAY_KEY_SECRET: z.string().default('heirest_razorpay_test_secret_2026'),
   RAZORPAY_WEBHOOK_SECRET: z.string().default('heirest_webhook_secret_2026')

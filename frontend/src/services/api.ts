@@ -28,6 +28,27 @@ const client = axios.create({
   headers: { 'Content-Type': 'application/json' },
 });
 
+declare global {
+  interface Window {
+    google?: {
+      accounts: {
+        id: {
+          initialize: (options: {
+            client_id: string;
+            callback: (response: { credential: string }) => void;
+          }) => void;
+          prompt: (listener?: (notification: {
+            isNotDisplayed: () => boolean;
+            isSkippedMoment: () => boolean;
+            getNotDisplayedReason: () => string;
+            getSkippedReason: () => string;
+          }) => void) => void;
+        };
+      };
+    };
+  }
+}
+
 // ── Auto-attach Bearer token ─────────────────────────────────
 client.interceptors.request.use((config) => {
   const token = localStorage.getItem('heirest-token');
@@ -209,29 +230,55 @@ export const authApi = {
       })()
     ),
 
-  /** POST /auth/oauth/google  (simulated) */
-  loginWithGoogle: (): Promise<AuthResponse> =>
-    withFallback(
-      async () => (await client.post<AuthResponse>('/auth/oauth/google')).data,
-      (() => {
-        const user: User = {
-          id: `usr-google-${Date.now()}`,
-          firstName: 'Sofia',
-          lastName: 'Laurent',
-          email: `sofia.laurent.${Date.now()}@gmail.com`,
-          authorHandle: '@sofialaurent',
-          membershipTier: 'Private Client',
-          role: 'customer',
-          sizingKitVoucherCode: `HEIREST-KIT-${Math.floor(10 + Math.random() * 90)}`,
-          savedSizes: [],
-          createdAt: new Date().toISOString(),
-        };
-        const token = buildTokenFor(user.id);
-        localStorage.setItem('heirest-token', token);
-        localStorage.setItem('heirest-auth-user', JSON.stringify(user));
-        return { user, token };
-      })()
-    ),
+  /** Sign in with a real Google Identity Services credential. */
+  loginWithGoogle: async (): Promise<AuthResponse> => {
+    const clientId = import.meta.env.VITE_GOOGLE_CLIENT_ID;
+    if (!clientId) {
+      throw new Error('Google sign-in is not configured. Set VITE_GOOGLE_CLIENT_ID.');
+    }
+
+    if (!window.google) {
+      await new Promise<void>((resolve, reject) => {
+        const existing = document.querySelector<HTMLScriptElement>(
+          'script[src="https://accounts.google.com/gsi/client"]'
+        );
+        if (existing) {
+          existing.addEventListener('load', () => resolve(), { once: true });
+          existing.addEventListener('error', () => reject(new Error('Could not load Google sign-in.')), { once: true });
+          return;
+        }
+        const script = document.createElement('script');
+        script.src = 'https://accounts.google.com/gsi/client';
+        script.async = true;
+        script.defer = true;
+        script.onload = () => resolve();
+        script.onerror = () => reject(new Error('Could not load Google sign-in.'));
+        document.head.appendChild(script);
+      });
+    }
+
+    if (!window.google) {
+      throw new Error('Google sign-in could not be initialized.');
+    }
+
+    const credential = await new Promise<string>((resolve, reject) => {
+      let settled = false;
+      window.google!.accounts.id.initialize({
+        client_id: clientId,
+        callback: (response) => {
+          settled = true;
+          resolve(response.credential);
+        }
+      });
+      window.google!.accounts.id.prompt((notification) => {
+        if (!settled && (notification.isNotDisplayed() || notification.isSkippedMoment())) {
+          reject(new Error('Google sign-in was not displayed. Check the authorized origin in Google Cloud Console.'));
+        }
+      });
+    });
+
+    return (await client.post<AuthResponse>('/auth/oauth/google', { credential })).data;
+  },
 
   /** POST /auth/oauth/apple  (simulated) */
   loginWithApple: (): Promise<AuthResponse> =>

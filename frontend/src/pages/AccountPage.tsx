@@ -356,7 +356,7 @@ export default function AccountPage() {
     : user.name;
   const displayHandle = authUser ? authUser.authorHandle : user.authorHandle;
   const displayInitials = authUser
-    ? `${authUser.firstName[0]}${authUser.lastName[0]}`
+    ? `${authUser.firstName?.trim().charAt(0) || ''}${authUser.lastName?.trim().charAt(0) || ''}` || 'U'
     : user.avatarInitials;
   const displayTier    = authUser?.membershipTier;
   const memberSince    = authUser

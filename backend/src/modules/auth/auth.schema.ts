@@ -22,3 +22,7 @@ export const verifyOtpSchema = z.object({
   email: z.string().email(),
   otpCode: z.string().min(4)
 });
+
+export const googleAuthSchema = z.object({
+  credential: z.string().min(1)
+});

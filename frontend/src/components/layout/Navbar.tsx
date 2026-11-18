@@ -114,6 +114,9 @@ export default function Navbar() {
   const count = cartCount();
   const location = useLocation();
   const isAdmin = authUser?.role === 'admin';
+  const userInitials = authUser
+    ? `${authUser.firstName?.trim().charAt(0) || ''}${authUser.lastName?.trim().charAt(0) || ''}` || 'U'
+    : '';
 
   // Detect unauthorized redirect
   useEffect(() => {
@@ -276,7 +279,7 @@ export default function Navbar() {
                     className="w-6 h-6 rounded-full flex items-center justify-center text-[0.55rem] font-mono flex-shrink-0"
                     style={{ backgroundColor: 'var(--color-espresso)', color: 'var(--color-champagne)' }}
                   >
-                    {authUser.firstName[0]}{authUser.lastName[0]}
+                    {userInitials}
                   </div>
                   <div className="hidden md:block text-left">
                     <p className="text-[0.62rem] tracking-wide font-mono" style={{ color: 'var(--color-espresso)' }}>
