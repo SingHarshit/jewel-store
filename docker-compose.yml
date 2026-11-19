@@ -77,17 +77,29 @@ services:
     restart: unless-stopped
     ports:
       - "80:80"
+      - "443:443"
+    volumes:
+      - certbot_www:/var/www/certbot:ro
+      - letsencrypt:/etc/letsencrypt:ro
     depends_on:
       - backend
     networks:
       - app_network
-
+  certbot:
+    image: certbot/certbot:latest
+    container_name: heirest_certbot
+    volumes:
+      - certbot_www:/var/www/certbot
+      - letsencrypt:/etc/letsencrypt
 volumes:
   postgres_data:
     driver: local
   redis_data:
     driver: local
-
+  certbot_www:
+    name: heirest_certbot_www
+  letsencrypt:
+    name: heirest_letsencrypt
 networks:
   app_network:
     driver: bridge
